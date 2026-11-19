@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">taxpro-mileage</string>
-    <string name="title_activity_main">taxpro-mileage</string>
-    <string name="package_name">com.taxprosuite.mileage</string>
-    <string name="custom_url_scheme">com.taxprosuite.mileage</string>
+    <string name="app_name">TaxOffix</string>
+    <string name="title_activity_main">TaxOffix</string>
+    <string name="package_name">com.taxoffix.mileage</string>
+    <string name="custom_url_scheme">com.taxoffix.mileage</string>
 </resources>

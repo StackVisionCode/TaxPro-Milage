@@ -1,5 +1,5 @@
 /**
- * TaxPro Mileage - Definición de Rutas
+ * TaxOffix - Definición de Rutas
  * =====================================
  * Este archivo define todas las rutas de navegación de la aplicación.
  * 
@@ -81,6 +81,8 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/trip-detail/trip-detail.page').then(m => m.TripDetailPage),
     canActivate: [authGuard],
   },
+
+  {path:'communication',loadComponent:()=>import('./communication/communication.page').then(m=>m.CommunicationPage),canActivate:[authGuard]},
 
   // Ruta comodín - Redirige al login para rutas no encontradas
   {

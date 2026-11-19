@@ -1,5 +1,5 @@
 /**
- * TaxPro Mileage - Página de Configuración
+ * TaxOffix - Página de Configuración
  * ==========================================
  * Diseño simple estilo lista con secciones
  * Incluye personalización y soporte funcionales
@@ -94,11 +94,6 @@ export class SettingsPage implements OnInit {
           label: 'Cambiar Cuenta',
           action: 'switch-account',
         },
-        {
-          icon: 'trash-outline',
-          label: 'Eliminar Cuenta',
-          action: 'delete-account',
-        },
       ],
     },
     {
@@ -131,10 +126,10 @@ export class SettingsPage implements OnInit {
   fontSize = 'medium';
 
   // Información de soporte
-  supportEmail = 'soporte@taxprosuite.com';
+  supportEmail = 'soporte@taxoffix.io';
   supportPhone = '+1 (555) 123-4567';
   supportWhatsApp = '+15551234567';
-  faqUrl = 'https://taxprosuite.com/faq';
+  faqUrl = 'https://taxoffix.io/faq';
 
   private router = inject(Router);
   private alertController = inject(AlertController);
@@ -436,7 +431,7 @@ export class SettingsPage implements OnInit {
   }
 
   private async sendEmail() {
-    const subject = encodeURIComponent('Soporte TaxPro Mileage');
+    const subject = encodeURIComponent('Soporte TaxOffix');
     const body = encodeURIComponent(
       'Hola, necesito ayuda con...\n\n[Describe tu problema aquí]'
     );
@@ -449,7 +444,7 @@ export class SettingsPage implements OnInit {
 
   private async openWhatsApp() {
     const message = encodeURIComponent(
-      'Hola, necesito ayuda con TaxPro Mileage'
+      'Hola, necesito ayuda con TaxOffix'
     );
     try {
       await Browser.open({
@@ -495,9 +490,9 @@ export class SettingsPage implements OnInit {
           text: 'Sitio Web',
           handler: async () => {
             try {
-              await Browser.open({ url: 'https://taxprosuite.com' });
+              await Browser.open({ url: 'https://taxoffix.io' });
             } catch {
-              window.open('https://taxprosuite.com', '_blank');
+              window.open('https://taxoffix.io', '_blank');
             }
           },
         },
@@ -505,9 +500,9 @@ export class SettingsPage implements OnInit {
           text: 'Términos de Servicio',
           handler: async () => {
             try {
-              await Browser.open({ url: 'https://taxprosuite.com/terms' });
+              await Browser.open({ url: 'https://taxoffix.io/terms' });
             } catch {
-              window.open('https://taxprosuite.com/terms', '_blank');
+              window.open('https://taxoffix.io/terms', '_blank');
             }
           },
         },
@@ -515,9 +510,9 @@ export class SettingsPage implements OnInit {
           text: 'Política de Privacidad',
           handler: async () => {
             try {
-              await Browser.open({ url: 'https://taxprosuite.com/privacy' });
+              await Browser.open({ url: 'https://taxoffix.io/privacy' });
             } catch {
-              window.open('https://taxprosuite.com/privacy', '_blank');
+              window.open('https://taxoffix.io/privacy', '_blank');
             }
           },
         },

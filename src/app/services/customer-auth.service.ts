@@ -1,8 +1,11 @@
+import { MobileSessionService } from '../communication/mobile-session.service';
+import { MobilePushService } from '../communication/mobile-push.service';
 import { isPendingTrackingStorageKey } from './tracking-storage-keys';
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable, OnDestroy } from '@angular/core';
 import {
   BehaviorSubject,
+  firstValueFrom,
   defer,
   catchError,
   from,
@@ -188,8 +191,11 @@ export class CustomerAuthService implements OnDestroy {
     );
   }
 
+  private calls=inject(MobileSessionService);
+  private push=inject(MobilePushService);
+
   logout(): Observable<boolean> {
-    return defer(()=>this.trackingService.suspendForLogout()).pipe(
+    return defer(async()=>{await this.calls.leaveForLogout();await this.push.revoke();await this.trackingService.suspendForLogout();}).pipe(
       switchMap(()=>this.http.post<void>(`${environment.apiUrl}${environment.endpoints.logout}`, {}).pipe(
         catchError(error => {
           console.warn('Error al notificar logout al servidor; se cierra la sesion local:',error);
@@ -405,6 +411,8 @@ export class CustomerAuthService implements OnDestroy {
    */
   async setBiometricLoginEnabled(enabled: boolean): Promise<void> {
     if (enabled) {
+      if (!Capacitor.isNativePlatform() || !await this.checkBiometricAvailability()) throw new Error('No hay biometría disponible en este dispositivo.');
+      await NativeBiometric.verifyIdentity({reason: 'Activa el acceso con tu huella en TaxOffix', title: 'Activar acceso biométrico'});
       const currentCustomer = this.currentCustomerSubject.value;
       const token = this.customerTokenService.token;
       const refreshToken = this.customerTokenService.refreshToken;
@@ -455,7 +463,7 @@ export class CustomerAuthService implements OnDestroy {
     try {
       // verifyIdentity lanza excepción si falla, no retorna valor
       await NativeBiometric.verifyIdentity({
-        reason: 'Inicia sesión en TaxPro Mileage',
+        reason: 'Inicia sesión en TaxOffix',
         title: 'Autenticación biométrica',
         subtitle: 'Usa tu huella digital o Face ID',
         description: 'Verifica tu identidad para acceder a tu cuenta'
@@ -509,7 +517,7 @@ export class CustomerAuthService implements OnDestroy {
         this.customerTokenService.setTokens(accessToken, refreshToken);
 
         // Cargar el perfil del usuario
-        await this.loadCustomerProfile().toPromise();
+        await firstValueFrom(this.loadCustomerProfile());
         return true;
       }
 

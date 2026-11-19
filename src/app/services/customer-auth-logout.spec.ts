@@ -1,3 +1,5 @@
+import { MobileSessionService } from '../communication/mobile-session.service';
+import { MobilePushService } from '../communication/mobile-push.service';
 import { TestBed } from '@angular/core/testing';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
@@ -20,6 +22,8 @@ describe('Logout with pending web GPS data', () => {
     http = jasmine.createSpy().and.returnValue(of(undefined));
     TestBed.configureTestingModule({
       providers: [
+        {provide:MobileSessionService,useValue:{leaveForLogout:async()=>undefined}},
+        {provide:MobilePushService,useValue:{revoke:async()=>undefined}},
         { provide: HttpClient, useValue: { post: http } },
         { provide: CustomerTokenService, useValue: { token: null, removeTokens } },
         { provide: GpsTrackingService, useValue: { suspendForLogout: suspend } },

@@ -1,5 +1,5 @@
 // /**
-//  * TaxPro Mileage - Servicio de Autenticación
+//  * TaxOffix - Servicio de Autenticación
 //  * ============================================
 //  * Este servicio maneja toda la lógica de autenticación:
 //  * - Login con usuario/contraseña
@@ -243,13 +243,13 @@
 
 //       // Determinar el mensaje según el tipo
 //       const reason = biometryType === BiometryType.FACE_ID 
-//         ? 'Usa Face ID para acceder a TaxPro Mileage'
-//         : 'Usa tu huella digital para acceder a TaxPro Mileage';
+//         ? 'Usa Face ID para acceder a TaxOffix'
+//         : 'Usa tu huella digital para acceder a TaxOffix';
 
 //       // Solicitar autenticación con NativeBiometric
 //       await NativeBiometric.verifyIdentity({
 //         reason: reason,
-//         title: 'TaxPro Mileage',
+//         title: 'TaxOffix',
 //         subtitle: 'Verificación de identidad',
 //         description: 'Accede de forma segura a tu cuenta',
 //         negativeButtonText: 'Usar contraseña',

@@ -4,8 +4,9 @@
     justify-content: center;
     align-items: center;
     min-height: 100%;
-    padding: 24px;
-    background: white;
+    box-sizing: border-box;
+    padding: max(16px, env(safe-area-inset-top)) 20px max(16px, env(safe-area-inset-bottom));
+    background: var(--ion-background-color, white);
 }
 
 .login-logo-text {
@@ -37,7 +38,7 @@
     padding: 32px 24px;
     width: 100%;
     max-width: 380px;
-    margin-bottom: 150px;
+    margin-bottom: 0;
 }
 
 .login-title {
@@ -487,4 +488,17 @@ ion-spinner {
     .company-spinner {
         --color: #60a5fa;
     }
+}
+.login-container > div:first-child { width: min(210px, 48vw); flex-shrink: 0; }
+.login-container > div:first-child img { display: block; width: 100%; max-height: 135px; object-fit: contain; }
+.login-card { padding: 20px 12px; }
+.version-text { margin: 12px 0 0; }
+.biometric-btn { width: 100%; font-family: inherit; }
+.biometric-hint { font-size: 12px; line-height: 1.4; text-align: center; color: var(--taxpro-text-secondary); }
+@media (max-height: 650px) {
+ .login-container > div:first-child img { max-height: 80px; }
+ .login-card { padding: 12px; }
+ .login-subtitle { margin-bottom: 16px; }
+ .separator { margin: 12px 0; }
+ .biometric-btn { padding: 10px; flex-direction: row; justify-content: center; }
 }

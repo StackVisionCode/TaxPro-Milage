@@ -1,5 +1,5 @@
 /**
- * TaxPro Mileage - Página de Dashboard
+ * TaxOffix - Página de Dashboard
  * =====================================
  * Dashboard principal con:
  * - Tarjetas de estadísticas
@@ -75,7 +75,7 @@ Chart.register(...registerables);
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [
+  imports: [RouterLink,
     CommonModule,
     RouterLink,
     CurrencyPipe,

@@ -1,5 +1,6 @@
+import { RouterLink } from '@angular/router';
 /**
- * TaxPro Mileage - Página de Tabs
+ * TaxOffix - Página de Tabs
  * ================================
  * Contenedor principal con la barra de navegación inferior.
  * Incluye 4 tabs:
@@ -35,7 +36,7 @@ import {
 @Component({
   selector: 'app-tabs',
   standalone: true,
-  imports: [IonTabs, IonTabBar, IonTabButton, IonIcon],
+  imports: [RouterLink, IonTabs, IonTabBar, IonTabButton, IonIcon],
   templateUrl: './tabs.page.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './tabs.page.scss',

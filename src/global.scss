@@ -691,3 +691,13 @@ body.font-large {
     font-size: 14px !important;
   }
 }
+/* Semantic Ionic surfaces follow the active palette. */
+ion-card { --background: var(--taxpro-card-background); color: var(--taxpro-text-primary); }
+ion-item { --background: var(--taxpro-card-background); --color: var(--taxpro-text-primary); }
+ion-list { background: var(--taxpro-card-background); }
+ion-label, ion-card-title, ion-card-subtitle { color: var(--taxpro-text-primary); }
+ion-item ion-label p, ion-note { color: var(--taxpro-text-secondary); }
+body.dark { --ion-color-primary: #90bfff; --ion-color-primary-contrast: #102039; --ion-tab-bar-color-selected: #90bfff; }
+@media (prefers-color-scheme: dark) {
+ :root { --ion-card-background: #2d3748; --ion-item-background: #2d3748; --ion-color-primary: #90bfff; --ion-color-primary-contrast: #102039; --ion-tab-bar-color-selected: #90bfff; }
+}

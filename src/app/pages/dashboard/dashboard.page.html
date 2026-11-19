@@ -13,7 +13,7 @@
       </div>
     </div>
     <div class="header-right">
-      <ion-button fill="clear" class="header-action-btn">
+      <ion-button fill="clear" class="header-action-btn" routerLink="/communication" [queryParams]="{section:'notifications'}" aria-label="Notificaciones">
         <ion-icon name="notifications-outline"></ion-icon>
       </ion-button>
     </div>
@@ -41,12 +41,12 @@
           style="width: 150px; height: 48px"
         ></ion-skeleton-text>
         } @else {
-        <h2 class="budget-value">
-          {{ statistics?.totalDeductionAmount == null ? 'Sin estimacion' : (statistics?.totalDeductionAmount | currency:'USD':'symbol':'1.2-2') }}
+        <h2 class="budget-value" [class.no-estimate]="statistics?.totalDeductionAmount == null">
+          {{ statistics?.totalDeductionAmount == null ? 'Sin estimación' : (statistics?.totalDeductionAmount | currency:'USD':'symbol':'1.2-2') }}
         </h2>
         }
         <div class="budget-change positive">
-          <span>{{ monthlyDeduction == null ? 'Sin estimacion' : (monthlyDeduction | currency:'USD':'symbol':'1.2-2') }}</span>
+          <span>{{ monthlyDeduction == null ? 'Sin estimación' : (monthlyDeduction | currency:'USD':'symbol':'1.2-2') }}</span>
         </div>
       </div>
     </div>
@@ -241,7 +241,7 @@
 
       <div class="yearly-stat">
         <span class="yearly-value"
-          >{{ statistics?.totalDeductionAmount == null ? 'Sin estimacion' : (statistics?.totalDeductionAmount | currency:'USD':'symbol':'1.2-2') }}</span
+          >{{ statistics?.totalDeductionAmount == null ? 'Sin estimación' : (statistics?.totalDeductionAmount | currency:'USD':'symbol':'1.2-2') }}</span
         >
         <span class="yearly-label">Deducción total</span>
       </div>

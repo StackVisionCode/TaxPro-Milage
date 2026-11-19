@@ -1,3 +1,6 @@
+import { SessionOverlayComponent } from './communication/session-overlay.component';
+import { MobilePushService } from './communication/mobile-push.service';
+import { inject } from '@angular/core';
 import { Component, ChangeDetectionStrategy } from '@angular/core';
 import { IonApp, IonRouterOutlet } from '@ionic/angular';
 
@@ -5,8 +8,8 @@ import { IonApp, IonRouterOutlet } from '@ionic/angular';
   selector: 'app-root',
   templateUrl: 'app.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
-  imports: [IonApp, IonRouterOutlet],
+  imports: [IonApp, IonRouterOutlet, SessionOverlayComponent],
 })
 export class AppComponent {
-  constructor() {}
+  private push=inject(MobilePushService);
 }

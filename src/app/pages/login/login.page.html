@@ -6,7 +6,7 @@
 
         <!-- Logo -->
         <div>
-            <img src="../../../assets/logo/taxpro-millage.png" alt="TaxPro Suite" />
+            <img src="../../../assets/logo/taxpro-millage.png" alt="TaxOffix" />
         </div>
 
         <div class="company-selection-card">
@@ -72,9 +72,9 @@
     @else {
     <div class="login-container">
 
-        <!-- Logo de TaxPro Suite -->
+        <!-- Logo de TaxOffix -->
         <div>
-            <img src="../../../assets/logo/taxpro-millage.png" alt="TaxPro Suite" />
+            <img src="../../../assets/logo/taxpro-millage.png" alt="TaxOffix" />
         </div>
 
         <!-- Tarjeta de Login -->
@@ -150,10 +150,11 @@
             </div>
 
             <!-- Botón de Biometría -->
-            <div class="biometric-btn" (click)="loginWithBiometrics()">
+            <button type="button" class="biometric-btn" (click)="loginWithBiometrics()" [disabled]="isLoading">
                 <ion-icon name="finger-print"></ion-icon>
                 <span>{{ biometryType === 'faceId' ? 'Usar Face ID' : 'Usar huella digital' }}</span>
-            </div>
+            </button>
+            @if(!biometricEnabled){<p class="biometric-hint">Actívala después de iniciar sesión por primera vez.</p>}
             }
 
         </div>

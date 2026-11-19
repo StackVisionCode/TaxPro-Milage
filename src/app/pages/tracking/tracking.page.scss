@@ -562,3 +562,7 @@
   font-size: 12px;
   p { margin: 4px 0 0; }
 }
+
+// Keep telemetry readable over the map in every theme.
+.stats-row .stat-item { background: linear-gradient(135deg, #0f172a, #1e293b); color: #fff; border: 1px solid #334155; }
+.stats-row .stat-label { color: #cbd5e1; }

@@ -1,5 +1,5 @@
 /**
- * TaxPro Mileage - Configuración de Entorno (Producción)
+ * TaxOffix - Configuración de Entorno (Producción)
  * =======================================================
  * Este archivo contiene las configuraciones específicas
  * para el entorno de producción.
@@ -14,6 +14,7 @@ export const environment = {
 
   apiUrl: 'https://api.taxoffix.io',
 
+  communication: { androidPushConfigured: true },
   endpoints: {
     login: '/auth/mobile/login',
     logout: '/auth/logout',
@@ -100,7 +101,7 @@ export const environment = {
   // ===========================================
 
   app: {
-    name: 'TaxPro Mileage',
+    name: 'TaxOffix',
     version: '1.0.0',
     currency: 'USD',
     // TARIFA ACTUALIZADA: $0.70 por milla

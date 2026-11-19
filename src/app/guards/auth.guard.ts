@@ -1,5 +1,5 @@
 /**
- * TaxPro Mileage - Guard de Autenticación
+ * TaxOffix - Guard de Autenticación
  * ========================================
  * Este guard protege las rutas que requieren autenticación.
  * Si el usuario no está autenticado, redirige al login.

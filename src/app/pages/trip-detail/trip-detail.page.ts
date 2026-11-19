@@ -1,5 +1,5 @@
 /**
- * TaxPro Mileage - Página de Detalle del Viaje
+ * TaxOffix - Página de Detalle del Viaje
  * =============================================
  * Esta página muestra todos los detalles de un viaje específico:
  * - Mapa con la ruta completa dibujada
@@ -445,7 +445,7 @@ export class TripDetailPage implements OnInit, OnDestroy {
     if (!this.trip) return;
 
     const deduction = this.calculateDeduction();
-    const text = `📍 TaxPro Mileage - Resumen de Viaje
+    const text = `📍 TaxOffix - Resumen de Viaje
 
 📅 Fecha: ${this.formatDate(this.trip.startTime)}
 🚗 Distancia: ${this.trip.distanceMiles.toFixed(2)} millas
@@ -453,7 +453,7 @@ export class TripDetailPage implements OnInit, OnDestroy {
 🏷️ Propósito: ${this.getPurposeLabel(this.trip.purpose)}
 💰 Deducción estimada: ${deduction == null ? 'Sin tarifa configurada' : deduction.toFixed(2)+' '+(this.trip.currency ?? '')}
 
-Registrado con TaxPro Mileage`;
+Registrado con TaxOffix`;
 
     try {
       await Share.share({

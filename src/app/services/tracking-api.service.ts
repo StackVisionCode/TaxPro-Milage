@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, from, EMPTY } from 'rxjs';
+import { Observable, from, EMPTY, firstValueFrom } from 'rxjs';
 import { expand, map, reduce } from 'rxjs/operators';
 
 import { environment } from '../../environments/environment';
@@ -63,6 +63,26 @@ export class TrackingApiService {
     return this.getVehicles().pipe(
       map((vehicles) => vehicles.find((vehicle) => vehicle.isDefault) ?? vehicles[0] ?? null)
     );
+  }
+
+  async uploadVehiclePhoto(file: File, customerId: string): Promise<string> {
+    const base = environment.apiUrl + '/storage/files';
+    const upload = await firstValueFrom(this.http.post<{fileId: string; uploadUrl: string; formData: Record<string,string>}>(base + '/uploads', {
+      originalName: file.name, contentType: file.type, sizeBytes: file.size,
+      ownerType: 'Customer', ownerId: customerId, folderType: 'Other', taxYear: null,
+    }));
+    const form = new FormData();
+    Object.entries(upload.formData).forEach(([k,v]) => form.append(k,v));
+    form.append('file', file);
+    const response = await fetch(upload.uploadUrl, {method: 'POST', body: form});
+    if (!response.ok) throw new Error('No se pudo subir la foto.');
+    await firstValueFrom(this.http.post(base + '/' + upload.fileId + '/complete', {}));
+    return 'storage:' + upload.fileId;
+  }
+  async vehiclePhotoUrl(photo: string): Promise<string> {
+    if (!photo.startsWith('storage:')) return photo;
+    const result = await firstValueFrom(this.http.post<{downloadUrl: string}>(environment.apiUrl + '/storage/files/' + encodeURIComponent(photo.slice(8)) + '/download-url', {}));
+    return result.downloadUrl;
   }
 
   private vehicleBody(vehicle: VehicleInput): VehicleInput {

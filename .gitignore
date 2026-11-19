@@ -74,3 +74,6 @@ Thumbs.db
 
 # Added by MD Pretty View — Markdown Preview Enhanced pan/zoom assets
 .crossnote/
+
+# Firebase app configuration is supplied per deployment.
+android/app/google-services.json

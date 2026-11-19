@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.taxprosuite.mileage',
-  appName: 'taxpro-mileage',
+  appId: 'com.taxoffix.mileage',
+  appName: 'TaxOffix',
   webDir: 'www',
 
   // Configuración de plugins

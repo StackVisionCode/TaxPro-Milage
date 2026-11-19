@@ -1,7 +1,7 @@
 import { TripService } from '../../services/trip.service';
 import { VehicleInput } from '../../models/interfaces';
 /**
- * TaxPro Mileage - Página de Perfil MEJORADA
+ * TaxOffix - Página de Perfil MEJORADA
  * ==========================================
  * Incluye:
  * - Foto de perfil editable
@@ -174,6 +174,18 @@ export class ProfilePage implements OnInit {
     await this.loadVehicles();
   }
 
+  vehiclePhotos: Record<string, string> = {};
+  async ionViewWillEnter() {
+    await this.refreshAvatar();
+    await this.loadVehicles();
+  }
+  private async refreshAvatar() {
+    this.profilePhoto = null;
+    try {
+      const contact = await firstValueFrom(this.authService.getMyCustomerContact());
+      if (contact.avatarFileId) this.profilePhoto = environment.apiUrl + '/storage/avatars/' + encodeURIComponent(contact.avatarFileId);
+    } catch { /* Keep the default avatar when the profile cannot be loaded. */ }
+  }
   async loadUserData() {
     this.authService.currentCustomer$.subscribe(
       (customer: ICustomerProfile | null) => {
@@ -181,19 +193,7 @@ export class ProfilePage implements OnInit {
       }
     );
 
-    const { value } = await Preferences.get({ key: 'profilePhoto' });
-    if (value) {
-      this.profilePhoto = value;
-    }
-
-    try {
-      const contact = await firstValueFrom(this.authService.getMyCustomerContact());
-      if (contact.avatarFileId) {
-        this.profilePhoto = `${environment.apiUrl}/storage/avatars/${contact.avatarFileId}`;
-      }
-    } catch (error) {
-      console.error('Error cargando la foto de perfil:', error);
-    }
+    await this.refreshAvatar();
   }
 
   async loadSettings() {
@@ -223,7 +223,14 @@ export class ProfilePage implements OnInit {
   async loadVehicles() {
     this.vehicles = [];
     this.vehicleService.getVehicles().subscribe({
-      next: vehicles => { this.vehicles = vehicles; },
+      next: vehicles => {
+        this.vehicles = vehicles; this.vehiclePhotos = {};
+        for (const vehicle of vehicles) if (vehicle.id && vehicle.photo) {
+          void this.vehicleService.vehiclePhotoUrl(vehicle.photo).then(url => {
+            if (this.vehicles.includes(vehicle)) this.vehiclePhotos[vehicle.id!] = url;
+          }).catch(() => undefined);
+        }
+      },
       error: () => this.showToast('Error loading vehicles', 'danger'),
     });
   }
@@ -277,7 +284,7 @@ export class ProfilePage implements OnInit {
       if (type === 'profile') {
         await this.uploadProfilePhoto(image.base64String);
       } else if (vehicle) {
-        this.showToast('Use an HTTPS URL in the vehicle photo editor', 'warning');
+        await this.uploadVehiclePhoto(image.base64String, vehicle);
       }
     } catch (error) {
       console.error('Error tomando foto:', error);
@@ -297,7 +304,7 @@ export class ProfilePage implements OnInit {
       if (type === 'profile') {
         await this.uploadProfilePhoto(image.base64String);
       } else if (vehicle) {
-        this.showToast('Use an HTTPS URL in the vehicle photo editor', 'warning');
+        await this.uploadVehiclePhoto(image.base64String, vehicle);
       }
     } catch (error) {
       console.error('Error seleccionando foto:', error);
@@ -550,22 +557,27 @@ export class ProfilePage implements OnInit {
   }
 
   async changeVehiclePhoto(vehicle: Vehicle) {
-    const alert = await this.alertController.create({
-      header: 'Vehicle photo',
-      inputs: [{ name: 'photo', type: 'url', placeholder: 'HTTPS photo URL', value: vehicle.photo || '' }],
-      buttons: [
-        { text: 'Cancel', role: 'cancel' },
-        { text: 'Save', handler: data => {
-          if (data.photo && !/^https:\/\//i.test(data.photo)) {
-            this.showToast('Enter an HTTPS photo URL', 'warning');
-            return false;
-          }
-          this.persistVehicle({ ...vehicle, photo: data.photo || undefined });
-          return true;
-        } },
+    const sheet = await this.actionSheetController.create({
+      header: 'Foto del vehículo', buttons: [
+        {text: 'Tomar foto', handler: () => { void this.takePhoto('vehicle', vehicle); }},
+        {text: 'Elegir de galería', handler: () => { void this.pickFromGallery('vehicle', vehicle); }},
+        {text: 'Cancelar', role: 'cancel'},
       ],
     });
-    await alert.present();
+    await sheet.present();
+  }
+  private async uploadVehiclePhoto(base64: string | undefined, vehicle: Vehicle) {
+    const customerId = this.customerTokenService.decodeToken()?.customer_id;
+    if (!base64 || !customerId || !vehicle.id) return;
+    const loading = await this.loadingController.create({message: 'Subiendo foto del vehículo…'});
+    await loading.present();
+    try {
+      const photo = await this.vehicleService.uploadVehiclePhoto(this.base64ToFile(base64, 'vehicle.jpg'), customerId);
+      await firstValueFrom(this.vehicleService.updateVehicle(vehicle.id, {...vehicle, photo}));
+      await this.loadVehicles();
+      await this.showToast('Foto guardada. Aparecerá cuando finalice su verificación.');
+    } catch { await this.showToast('No se pudo guardar la foto del vehículo', 'danger'); }
+    finally { await loading.dismiss(); }
   }
 
   // ===========================================

@@ -1,5 +1,5 @@
 /**
- * TaxPro Mileage - Página de Login
+ * TaxOffix - Página de Login
  * =================================
  * Página de inicio de sesión con:
  * - Login con email y contraseña
@@ -85,6 +85,7 @@ export class LoginPage implements OnInit {
   isLoading = false;
   errorMessage = '';
   biometryAvailable = false;
+  biometricEnabled = false;
   biometryType: 'fingerprint' | 'faceId' | 'iris' | null = null;
 
   // Selección de oficina
@@ -121,7 +122,10 @@ export class LoginPage implements OnInit {
   /**
    * Verifica si hay biometría disponible en el dispositivo
    */
+  async ionViewWillEnter(): Promise<void> { await this.checkBiometricAvailability(); }
+
   async checkBiometricAvailability(): Promise<void> {
+    this.biometryAvailable = false; this.biometricEnabled = false;
     try {
       // Verificar si el hardware biométrico está disponible
       const biometryType = await this.authService.checkBiometricAvailability();
@@ -146,7 +150,8 @@ export class LoginPage implements OnInit {
         // Verificar si hay credenciales biométricas guardadas
         const biometricEnabled =
           await this.authService.isBiometricLoginEnabled();
-        this.biometryAvailable = biometricEnabled;
+        this.biometryAvailable = true;
+        this.biometricEnabled = biometricEnabled;
 
         console.log(
           'Biometría disponible:',
@@ -396,6 +401,16 @@ export class LoginPage implements OnInit {
    * Inicia sesión usando biometría
    */
   async loginWithBiometrics(): Promise<void> {
+    if (this.isLoading) return;
+    if (!this.biometricEnabled) {
+      const alert = await this.alertController.create({
+        header: 'Activar acceso biométrico',
+        message: 'Inicia sesión con tu correo y contraseña. Después podrás activar la huella digital para los próximos accesos en este dispositivo.',
+        buttons: ['Entendido'],
+      });
+      await alert.present(); return;
+    }
+    this.isLoading = true;
     const loading = await this.loadingController.create({
       message: 'Verificando...',
       spinner: 'crescent',
@@ -435,7 +450,7 @@ export class LoginPage implements OnInit {
         });
         await alert.present();
       }
-    }
+    } finally { this.isLoading = false; }
   }
 
   /**
@@ -469,13 +484,17 @@ export class LoginPage implements OnInit {
         {
           text: 'Sí, activar',
           handler: async () => {
-            await this.authService.setBiometricLoginEnabled(true);
+            try {
+              await this.authService.setBiometricLoginEnabled(true);
+              this.biometricEnabled = true;
+            } catch { this.errorMessage = 'No se pudo activar la huella. Puedes reintentarlo desde Mi Perfil.'; }
           },
         },
       ],
     });
 
     await alert.present();
+    await alert.onDidDismiss();
   }
 
   /**
