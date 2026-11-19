@@ -1,161 +1,72 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, throwError, of } from 'rxjs';
-import { catchError } from 'rxjs/operators';
+import { Observable, from, EMPTY } from 'rxjs';
+import { expand, map, reduce } from 'rxjs/operators';
 
 import { environment } from '../../environments/environment';
 import {
-  ApiResponse,
-  TripPayloadDto,
-  TripStatisticsDto,
-  GeoPointDto,
-  GeoPositionDto,
   TrackingState,
-  GpsPoint,
-  Trip,
   Vehicle,
+  VehicleInput,
+  VehiclePage,
   IPersonalData,
 } from '../models/interfaces';
-import { CustomerTokenService } from './customer-token.service';
+import { MobileTripSyncService } from './mobile-trip-sync.service';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class TrackingApiService {
   private http = inject(HttpClient);
-  private customerTokenService = inject(CustomerTokenService);
+  private sync = inject(MobileTripSyncService);
 
   urlVehicle: string = environment.apiUrl + environment.endpoints.profileVehicle;
   urlGetVehicle: string = environment.apiUrl + environment.endpoints.getProfileVehicle;
 
   dataVehicle = '';
 
-  /**
-   * Envía el payload completo del trip al backend.
-   * Convierte el TrackingState interno al TripPayloadDto que espera el API.
-   */
-  sendTripPayload(state: TrackingState): Observable<ApiResponse<Trip>> {
-    const payload = this.buildTripPayloadDto(state);
-    const url = `${environment.apiUrl}${environment.endpoints.mileageLog}`;
+  sendTripPayload(state: TrackingState): Observable<void> {
+    return from(this.sync.record(structuredClone(state)));
+  }
 
-    if (environment.debug.logApi) {
-      console.log('Payload enviado al API:', JSON.stringify(payload, null, 2));
-    }
+  createVehicleProfile(payload: VehicleInput): Observable<Vehicle> {
+    return this.http.post<Vehicle>(this.urlVehicle, this.vehicleBody(payload));
+  }
 
-    return this.http.post<ApiResponse<Trip>>(url, payload).pipe(
-      catchError((error) => {
-        console.error('Error enviando datos a la API:', error);
-        return throwError(() => error);
-      })
+  getVehicles(): Observable<Vehicle[]> {
+    const page = (number: number) =>
+      this.http.get<VehiclePage>(this.urlVehicle, {
+        params: { page: number, size: 100 },
+      });
+    return page(1).pipe(
+      expand((result) => (result.hasMore ? page(result.page + 1) : EMPTY)),
+      reduce((vehicles, result) => [...vehicles, ...result.items], [] as Vehicle[])
     );
   }
 
-  /**
-   * Envía las estadísticas finales del trip.
-   */
-  sendTripStatistics(
-    distanceMiles: number,
-    distanceKm: number,
-    durationSeconds: number,
-    totalPoints: number
-  ): Observable<ApiResponse<TripStatisticsDto>> {
-    const stats: TripStatisticsDto = {
-      distanceMiles,
-      distanceKm,
-      durationSeconds,
-      totalPoints,
-    };
-
-    const url = `${environment.apiUrl}${environment.endpoints.tripStatistics}`;
-    return this.http.post<ApiResponse<TripStatisticsDto>>(url, stats);
+  getVehicle(id: string): Observable<Vehicle> {
+    return this.http.get<Vehicle>(`${this.urlVehicle}/${encodeURIComponent(id)}`);
   }
 
-  /**
-   * Convierte el TrackingState interno al formato TripPayloadDto del backend.
-   */
-  buildTripPayloadDto(state: TrackingState): TripPayloadDto {
-    const decodedToken = this.customerTokenService.decodeToken();
-
-    if (!decodedToken) {
-      throw new Error('No se pudo decodificar el token JWT');
-    }
-
-    const customerId = decodedToken.nameid;
-    const companyId = decodedToken.companyId;
-
-    const profileData = { customerId, companyId };
-
-    if (!customerId || !companyId) {
-      throw new Error('CustomerId o CompanyId no encontrado en el token');
-    }
-
-    this.getProfileVehicle(profileData).subscribe({
-      next: (vehicle) => {
-        if (vehicle && vehicle.id) {
-          this.dataVehicle = vehicle.id?.toString()!;
-        }
-        console.log('Vehículo perfil cargado:', vehicle);
-      },
-      error: (error) => {
-        console.error('Error cargando vehículo perfil:', error);
-      }
-    });
-
-    if (!state.tripId || !state.purpose) {
-      throw new Error('TripId y Purpose son requeridos');
-    }
-
-    const routePoints: GeoPointDto[] = state.routePoints.map(p => this.toGeoPointDto(p));
-
-    let currentPosition: GeoPositionDto | undefined;
-    if (state.currentPosition) {
-      currentPosition = {
-        latitude: state.currentPosition.latitude,
-        longitude: state.currentPosition.longitude,
-        accuracy: state.currentPosition.accuracy ?? 0,
-        timestamp: state.currentPosition.timestamp,
-      };
-    }
-
-    return {
-      tripId: state.tripId,
-      customerId,
-      companyId,
-      vehicleId: this.dataVehicle,
-      purpose: state.purpose,
-      isTracking: state.isTracking,
-      isPaused: state.isPaused,
-      routePoints,
-      currentPosition,
-      startTime: state.startTime ?? Date.now(),
-      lastUpdate: state.lastUpdate ?? Date.now(),
-      elapsedTime: state.elapsedTime ?? 0,
-      currentDistance: state.currentDistance ?? 0,
-      currentSpeed: state.currentSpeed ?? 0,
-    };
+  updateVehicle(id: string, payload: VehicleInput): Observable<Vehicle> {
+    return this.http.put<Vehicle>(
+      `${this.urlVehicle}/${encodeURIComponent(id)}`,
+      this.vehicleBody(payload)
+    );
   }
 
-  /**
-   * Convierte un GpsPoint interno a GeoPointDto del backend.
-   */
-  private toGeoPointDto(point: GpsPoint): GeoPointDto {
-    return {
-      latitude: point.latitude,
-      longitude: point.longitude,
-      accuracy: point.accuracy ?? 0,
-      timestamp: point.timestamp,
-    };
+  deleteVehicle(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.urlVehicle}/${encodeURIComponent(id)}`);
   }
 
-  createVehicleProfile(payload: Vehicle): Observable<boolean> {
-    if (payload.plate.length > 0 || payload.plate !== '' || payload.plate !== undefined) {
-      return this.http.post<boolean>(this.urlVehicle, payload);
-    }
-
-    return of(false);
+  getProfileVehicle(_data?: IPersonalData): Observable<Vehicle | null> {
+    return this.getVehicles().pipe(
+      map((vehicles) => vehicles.find((vehicle) => vehicle.isDefault) ?? vehicles[0] ?? null)
+    );
   }
 
-  getProfileVehicle(data: IPersonalData): Observable<Vehicle> {
-    return this.http.post<Vehicle>(this.urlGetVehicle, data);
+  private vehicleBody(vehicle: VehicleInput): VehicleInput {
+    const { plate, make, model, year, color, photo, currentMileage, isDefault } = vehicle;
+    return { plate, make, model, year, color, photo, currentMileage, isDefault };
   }
 }

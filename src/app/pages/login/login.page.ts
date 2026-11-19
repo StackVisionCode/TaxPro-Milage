@@ -8,9 +8,19 @@
  * - Manejo de errores
  */
 
-import { Component, OnInit, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
+import {
+  Component,
+  OnInit,
+  inject,
+  ChangeDetectionStrategy,
+} from '@angular/core';
+
+import {
+  FormBuilder,
+  FormGroup,
+  Validators,
+  ReactiveFormsModule,
+} from '@angular/forms';
 import { Router } from '@angular/router';
 import {
   IonContent,
@@ -18,39 +28,47 @@ import {
   IonButton,
   IonIcon,
   IonSpinner,
-
   IonInputPasswordToggle,
   AlertController,
-  LoadingController
-} from '@ionic/angular/standalone';
+  LoadingController,
+} from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import {
   fingerPrint,
   logInOutline,
   mailOutline,
   lockClosedOutline,
-  alertCircleOutline
+  alertCircleOutline,
 } from 'ionicons/icons';
-import { CustomerAuthService, BiometryType } from '../../services/customer-auth.service';
-import { ICustomerCompanyOption } from '../../models/customer-login.interface';
-import { businessOutline, locationOutline, arrowBackOutline } from 'ionicons/icons';
-
+import {
+  CustomerAuthService,
+  BiometryType,
+} from '../../services/customer-auth.service';
+import {
+  ICustomerLoginResponse,
+  ICustomerTenantOption,
+} from '../../models/customer-login.interface';
+import {
+  businessOutline,
+  locationOutline,
+  arrowBackOutline,
+} from 'ionicons/icons';
 
 @Component({
   selector: 'app-login',
   standalone: true,
   imports: [
-    CommonModule,
     ReactiveFormsModule,
     IonContent,
     IonInput,
     IonButton,
     IonIcon,
     IonSpinner,
-    IonInputPasswordToggle
+    IonInputPasswordToggle,
   ],
   templateUrl: './login.page.html',
-  styleUrl: './login.page.scss'
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styleUrl: './login.page.scss',
 })
 export class LoginPage implements OnInit {
   // Inyección de dependencias
@@ -69,10 +87,10 @@ export class LoginPage implements OnInit {
   biometryAvailable = false;
   biometryType: 'fingerprint' | 'faceId' | 'iris' | null = null;
 
-  // Selección de company
+  // Selección de oficina
   showCompanySelection = false;
-  availableCompanies: ICustomerCompanyOption[] = [];
-  private pendingCredentials: { email: string; password: string } | null = null;
+  availableOffices: ICustomerTenantOption[] = [];
+  private pendingDiscoverySessionRef: string | null = null;
 
   constructor() {
     // Registrar iconos
@@ -84,13 +102,13 @@ export class LoginPage implements OnInit {
       alertCircleOutline,
       businessOutline,
       locationOutline,
-      arrowBackOutline
+      arrowBackOutline,
     });
 
     // Inicializar formulario
     this.loginForm = this.fb.group({
       email: ['', [Validators.required, Validators.email]],
-      password: ['', [Validators.required, Validators.minLength(6)]]
+      password: ['', [Validators.required, Validators.minLength(6)]],
     });
   }
 
@@ -126,10 +144,16 @@ export class LoginPage implements OnInit {
         }
 
         // Verificar si hay credenciales biométricas guardadas
-        const biometricEnabled = await this.authService.isBiometricLoginEnabled();
+        const biometricEnabled =
+          await this.authService.isBiometricLoginEnabled();
         this.biometryAvailable = biometricEnabled;
 
-        console.log('Biometría disponible:', this.biometryType, 'Habilitada:', biometricEnabled);
+        console.log(
+          'Biometría disponible:',
+          this.biometryType,
+          'Habilitada:',
+          biometricEnabled
+        );
       } else {
         this.biometryAvailable = false;
       }
@@ -157,7 +181,7 @@ export class LoginPage implements OnInit {
 
     const credentials = {
       email: this.loginForm.value.email.trim().toLowerCase(),
-      password: this.loginForm.value.password
+      password: this.loginForm.value.password,
     };
 
     this.performLogin(credentials);
@@ -170,77 +194,158 @@ export class LoginPage implements OnInit {
     this.authService.login(credentials).subscribe({
       next: async (response) => {
         console.log('Login response:', response);
-        if (response && response.success) {
-          // Requiere selección de company
-          if (response.data?.requiresCompanySelection && response.data?.availableCompanies) {
-            this.availableCompanies = response.data.availableCompanies;
-            this.pendingCredentials = credentials;
-            this.showCompanySelection = true;
-            this.isLoading = false;
+        if (
+          response.requiresTenantSelection &&
+          response.discoverySessionRef &&
+          response.offices.length > 0
+        ) {
+          this.availableOffices = response.offices;
+          this.pendingDiscoverySessionRef = response.discoverySessionRef;
+
+          if (response.offices.length === 1 && !response.offices[0].mfaRequired) {
+            // selectOffice() is guarded by isLoading for user clicks; the initial
+            // login request is still loading here, so complete the single-office
+            // flow directly instead of returning before the tenant login starts.
+            this.finishTenantLogin(response.offices[0]);
             return;
           }
 
-          // Login directo → completar flujo
-          await this.completeLoginFlow();
-        } else {
-          this.errorMessage = response?.message || 'Error al iniciar sesión';
-        }
-      },
-      error: (error) => {
-        console.error('Error en login:', error);
-
-        // 409 Conflict = sesión activa en otro dispositivo → cerrar y reintentar
-        if (error.status === 409) {
-          this.executeForceLoginFlow(credentials);
+          this.showCompanySelection = true;
+          this.isLoading = false;
           return;
         }
 
-        this.errorMessage = error?.error?.message || error?.message || 'Error al iniciar sesión';
+        await this.handleSessionResponse(response);
+      },
+      error: (error) => {
+        console.error('Error en login:', error);
+        this.errorMessage =
+          error?.error?.message || error?.message || 'Error al iniciar sesión';
         this.isLoading = false;
       },
       complete: () => {
         this.isLoading = false;
-      }
+      },
     });
   }
 
   /**
    * Selecciona una company y completa el login
    */
-  selectCompany(company: ICustomerCompanyOption): void {
-    if (!this.pendingCredentials || this.isLoading) return;
+  async selectOffice(office: ICustomerTenantOption): Promise<void> {
+    if (!this.pendingDiscoverySessionRef || this.isLoading) return;
+
+    if (office.mfaRequired) {
+      const alert = await this.alertController.create({
+        header: 'Verificación en dos pasos',
+        message: `Ingresa el código de autenticación para ${office.name}.`,
+        inputs: [
+          {
+            name: 'mfaCode',
+            type: 'text',
+            placeholder: 'Código de 6 dígitos',
+            attributes: { inputmode: 'numeric', autocomplete: 'one-time-code' },
+          },
+        ],
+        buttons: [
+          { text: 'Cancelar', role: 'cancel' },
+          {
+            text: 'Continuar',
+            handler: (values) => {
+              const code = String(values?.mfaCode ?? '').trim();
+              if (!code) return false;
+              this.finishTenantLogin(office, code);
+              return true;
+            },
+          },
+        ],
+      });
+      await alert.present();
+      return;
+    }
+
+    this.finishTenantLogin(office);
+  }
+
+  private finishTenantLogin(
+    office: ICustomerTenantOption,
+    mfaCode?: string
+  ): void {
+    if (!this.pendingDiscoverySessionRef) return;
 
     this.isLoading = true;
     this.errorMessage = '';
 
-    this.authService.loginWithCompany({
-      email: this.pendingCredentials.email,
-      password: this.pendingCredentials.password,
-      companyId: company.companyId
-    }).subscribe({
-      next: async (response) => {
-        if (response && response.success) {
+    this.authService
+      .loginWithTenant({
+        discoverySessionRef: this.pendingDiscoverySessionRef,
+        tenantId: office.tenantId,
+        mfaCode,
+      })
+      .subscribe({
+        next: async (response) => {
           this.showCompanySelection = false;
-          this.pendingCredentials = null;
-          await this.completeLoginFlow();
-        } else {
-          this.errorMessage = response?.message || 'Error al seleccionar compañía';
+          await this.handleSessionResponse(response);
+        },
+        error: (error) => {
+          console.error('Error en login con oficina:', error);
+          this.errorMessage =
+            error?.error?.message ||
+            error?.message ||
+            'Error al seleccionar la oficina';
           this.isLoading = false;
-        }
+        },
+      });
+  }
+
+  private async handleSessionResponse(
+    response: ICustomerLoginResponse
+  ): Promise<void> {
+    if (response.takeoverRequired && response.takeoverTicket) {
+      await this.confirmSessionTakeover(response.takeoverTicket);
+      return;
+    }
+
+    if (!response.accessToken || !response.refreshToken) {
+      this.errorMessage = 'La API no devolvió una sesión válida.';
+      this.isLoading = false;
+      return;
+    }
+
+    this.pendingDiscoverySessionRef = null;
+    await this.completeLoginFlow();
+  }
+
+  private async confirmSessionTakeover(ticket: string): Promise<void> {
+    this.isLoading = false;
+    const alert = await this.alertController.create({
+      header: 'Sesión activa',
+      message:
+        'Esta cuenta ya tiene una sesión activa. ¿Deseas cerrarla e iniciar sesión en este dispositivo?',
+      buttons: [
+        { text: 'Cancelar', role: 'cancel' },
+        {
+          text: 'Continuar',
+          role: 'confirm',
+          handler: () => this.executeSessionTakeover(ticket),
+        },
+      ],
+    });
+    await alert.present();
+  }
+
+  private executeSessionTakeover(ticket: string): void {
+    this.isLoading = true;
+    this.authService.takeoverSession(ticket).subscribe({
+      next: async () => {
+        this.pendingDiscoverySessionRef = null;
+        await this.completeLoginFlow();
       },
       error: (error) => {
-        console.error('Error en login con company:', error);
-
-        // 409 en select-company → force logout y reintentar desde el inicio
-        if (error.status === 409 && this.pendingCredentials) {
-          this.showCompanySelection = false;
-          this.executeForceLoginFlow(this.pendingCredentials);
-          return;
-        }
-
-        this.errorMessage = error?.error?.message || error?.message || 'Error al seleccionar compañía';
+        this.errorMessage =
+          error?.error?.message || 'No se pudo transferir la sesión.';
         this.isLoading = false;
-      }
+      },
     });
   }
 
@@ -249,8 +354,8 @@ export class LoginPage implements OnInit {
    */
   backToLogin(): void {
     this.showCompanySelection = false;
-    this.availableCompanies = [];
-    this.pendingCredentials = null;
+    this.availableOffices = [];
+    this.pendingDiscoverySessionRef = null;
     this.errorMessage = '';
   }
 
@@ -263,7 +368,8 @@ export class LoginPage implements OnInit {
 
     if (biometryType) {
       if (!biometricEnabled) {
-        this.biometryType = biometryType === BiometryType.FACE_ID ? 'faceId' : 'fingerprint';
+        this.biometryType =
+          biometryType === BiometryType.FACE_ID ? 'faceId' : 'fingerprint';
         await this.askToEnableBiometrics();
       } else {
         await this.authService.setBiometricLoginEnabled(true);
@@ -278,36 +384,12 @@ export class LoginPage implements OnInit {
    */
   getCompanyInitials(name: string): string {
     if (!name) return '?';
-    return name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
-  }
-
-  /**
-   * Ejecuta force logout y reintenta el login automáticamente
-   */
-  private executeForceLoginFlow(credentials: { email: string; password: string }): void {
-    this.isLoading = true;
-    this.errorMessage = '';
-
-    this.authService.forceLogout({
-      email: credentials.email,
-      password: credentials.password,
-      reason: 'User requested new login from different device'
-    }).subscribe({
-      next: (response) => {
-        if (response.success) {
-          console.log('Force logout exitoso, reintentando login...');
-          this.performLogin(credentials);
-        } else {
-          this.errorMessage = 'No se pudo cerrar la sesión anterior. Intenta de nuevo.';
-          this.isLoading = false;
-        }
-      },
-      error: (error) => {
-        console.error('Error en force logout:', error);
-        this.errorMessage = error?.error?.message || 'Error al cerrar la sesión anterior.';
-        this.isLoading = false;
-      }
-    });
+    return name
+      .split(' ')
+      .map((w) => w[0])
+      .join('')
+      .substring(0, 2)
+      .toUpperCase();
   }
 
   /**
@@ -316,7 +398,7 @@ export class LoginPage implements OnInit {
   async loginWithBiometrics(): Promise<void> {
     const loading = await this.loadingController.create({
       message: 'Verificando...',
-      spinner: 'crescent'
+      spinner: 'crescent',
     });
 
     try {
@@ -332,21 +414,24 @@ export class LoginPage implements OnInit {
         // Si no fue exitoso, mostrar mensaje para login manual
         await this.showBiometricExpiredAlert();
       }
-
     } catch (error: any) {
       await loading.dismiss();
 
       console.error('Error en login biométrico:', error);
 
       // Verificar si es un error de token expirado o credenciales inválidas
-      if (error.message?.includes('401') || error.message?.includes('expired') || error.message?.includes('invalid')) {
+      if (
+        error.message?.includes('401') ||
+        error.message?.includes('expired') ||
+        error.message?.includes('invalid')
+      ) {
         await this.showBiometricExpiredAlert();
       } else {
         // Otro tipo de error (usuario canceló, etc.)
         const alert = await this.alertController.create({
           header: 'Error de autenticación',
           message: error.message || 'No se pudo verificar tu identidad',
-          buttons: ['Entendido']
+          buttons: ['Entendido'],
         });
         await alert.present();
       }
@@ -359,8 +444,9 @@ export class LoginPage implements OnInit {
   private async showBiometricExpiredAlert(): Promise<void> {
     const alert = await this.alertController.create({
       header: 'Sesión expirada',
-      message: 'Tu sesión guardada ha expirado. Por favor, inicia sesión con tu correo y contraseña para actualizar tus credenciales biométricas.',
-      buttons: ['Entendido']
+      message:
+        'Tu sesión guardada ha expirado. Por favor, inicia sesión con tu correo y contraseña para actualizar tus credenciales biométricas.',
+      buttons: ['Entendido'],
     });
     await alert.present();
   }
@@ -369,7 +455,8 @@ export class LoginPage implements OnInit {
    * Pregunta al usuario si quiere habilitar login biométrico
    */
   async askToEnableBiometrics(): Promise<void> {
-    const biometryName = this.biometryType === 'faceId' ? 'Face ID' : 'huella digital';
+    const biometryName =
+      this.biometryType === 'faceId' ? 'Face ID' : 'huella digital';
 
     const alert = await this.alertController.create({
       header: 'Login rápido',
@@ -377,15 +464,15 @@ export class LoginPage implements OnInit {
       buttons: [
         {
           text: 'No, gracias',
-          role: 'cancel'
+          role: 'cancel',
         },
         {
           text: 'Sí, activar',
           handler: async () => {
             await this.authService.setBiometricLoginEnabled(true);
-          }
-        }
-      ]
+          },
+        },
+      ],
     });
 
     await alert.present();
@@ -396,6 +483,7 @@ export class LoginPage implements OnInit {
    */
   onLogoError(event: any): void {
     // Usar un placeholder si el logo no carga
-    event.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCBmaWxsPSIjMWEzNjVkIiB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIwIi8+PHRleHQgeD0iNTAiIHk9IjU1IiBmb250LXNpemU9IjQwIiBmb250LXdlaWdodD0iYm9sZCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPk08L3RleHQ+PC9zdmc+';
+    event.target.src =
+      'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCBmaWxsPSIjMWEzNjVkIiB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIwIi8+PHRleHQgeD0iNTAiIHk9IjU1IiBmb250LXNpemU9IjQwIiBmb250LXdlaWdodD0iYm9sZCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPk08L3RleHQ+PC9zdmc+';
   }
 }

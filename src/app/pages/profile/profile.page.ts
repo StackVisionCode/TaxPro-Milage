@@ -1,3 +1,5 @@
+import { TripService } from '../../services/trip.service';
+import { VehicleInput } from '../../models/interfaces';
 /**
  * TaxPro Mileage - Página de Perfil MEJORADA
  * ==========================================
@@ -8,26 +10,67 @@
  * - Ajustes de tracking
  */
 
-import { Component, OnInit, inject } from '@angular/core';
+import {
+  Component,
+  OnInit,
+  inject,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
-  IonContent, IonHeader, IonTitle, IonToolbar, IonList, IonItem,
-  IonLabel, IonInput, IonToggle, IonButton, IonIcon, IonAvatar,
-  IonCard, IonCardHeader, IonCardTitle, IonCardContent, IonSelect,
-  IonSelectOption, IonChip, IonBadge, IonNote, IonSpinner,
-  AlertController, ToastController, ActionSheetController, LoadingController
-} from '@ionic/angular/standalone';
+  IonContent,
+  IonHeader,
+  IonTitle,
+  IonToolbar,
+  IonList,
+  IonItem,
+  IonLabel,
+  IonInput,
+  IonToggle,
+  IonButton,
+  IonIcon,
+  IonAvatar,
+  IonCard,
+  IonCardHeader,
+  IonCardTitle,
+  IonCardContent,
+  IonSelect,
+  IonSelectOption,
+  IonChip,
+  IonBadge,
+  IonNote,
+  IonSpinner,
+  AlertController,
+  ToastController,
+  ActionSheetController,
+  LoadingController,
+} from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import {
-  personOutline, carOutline, settingsOutline, logOutOutline,
-  cameraOutline, createOutline, trashOutline, addOutline,
-  speedometerOutline, timeOutline, locationOutline, shieldCheckmarkOutline,
-  fingerPrintOutline, informationCircleOutline, briefcaseOutline, imageOutline,
-  chevronForwardOutline, checkmarkOutline, closeOutline
+  personOutline,
+  carOutline,
+  settingsOutline,
+  logOutOutline,
+  cameraOutline,
+  createOutline,
+  trashOutline,
+  addOutline,
+  speedometerOutline,
+  timeOutline,
+  locationOutline,
+  shieldCheckmarkOutline,
+  fingerPrintOutline,
+  informationCircleOutline,
+  briefcaseOutline,
+  imageOutline,
+  chevronForwardOutline,
+  checkmarkOutline,
+  closeOutline,
 } from 'ionicons/icons';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Preferences } from '@capacitor/preferences';
+import { firstValueFrom } from 'rxjs';
 
 import { CustomerAuthService } from '../../services/customer-auth.service';
 import { GpsTrackingService } from '../../services/gps-tracking.service';
@@ -42,14 +85,31 @@ import { TrackingApiService } from '../../services/tracking-api.service';
   selector: 'app-profile',
   standalone: true,
   imports: [
-    CommonModule, FormsModule,
-    IonContent, IonHeader, IonTitle, IonToolbar, IonList, IonItem,
-    IonLabel, IonToggle, IonButton, IonIcon, IonAvatar,
-    IonCard, IonCardHeader, IonCardTitle, IonCardContent, IonSelect,
-    IonSelectOption, IonChip, IonNote
+    CommonModule,
+    FormsModule,
+    IonContent,
+    IonHeader,
+    IonTitle,
+    IonToolbar,
+    IonList,
+    IonItem,
+    IonLabel,
+    IonToggle,
+    IonButton,
+    IonIcon,
+    IonAvatar,
+    IonCard,
+    IonCardHeader,
+    IonCardTitle,
+    IonCardContent,
+    IonSelect,
+    IonSelectOption,
+    IonChip,
+    IonNote,
   ],
   templateUrl: './profile.page.html',
-  styleUrl: './profile.page.scss'
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styleUrl: './profile.page.scss',
 })
 export class ProfilePage implements OnInit {
   private authService = inject(CustomerAuthService);
@@ -59,12 +119,14 @@ export class ProfilePage implements OnInit {
   private actionSheetController = inject(ActionSheetController);
   private loadingController = inject(LoadingController);
   private router = inject(Router);
-  private customerTokenService: CustomerTokenService = inject(CustomerTokenService);
+  private customerTokenService: CustomerTokenService =
+    inject(CustomerTokenService);
   private vehicleService: TrackingApiService = inject(TrackingApiService);
 
   user: ICustomerProfile | null = null;
   profilePhoto: string | null = null;
-  defaultAvatar = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI1MCIgZmlsbD0iIzFhMzY1ZCIvPjxjaXJjbGUgY3g9IjUwIiBjeT0iMzUiIHI9IjE4IiBmaWxsPSJ3aGl0ZSIvPjxwYXRoIGQ9Ik0yMCA4NWMwLTIwIDEzLTMwIDMwLTMwczMwIDEwIDMwIDMwIiBmaWxsPSJ3aGl0ZSIvPjwvc3ZnPg==';
+  defaultAvatar =
+    'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI1MCIgZmlsbD0iIzFhMzY1ZCIvPjxjaXJjbGUgY3g9IjUwIiBjeT0iMzUiIHI9IjE4IiBmaWxsPSJ3aGl0ZSIvPjxwYXRoIGQ9Ik0yMCA4NWMwLTIwIDEzLTMwIDMwLTMwczMwIDEwIDMwIDMwIiBmaWxsPSJ3aGl0ZSIvPjwvc3ZnPg==';
 
   vehicles: Vehicle[] = [];
 
@@ -75,20 +137,37 @@ export class ProfilePage implements OnInit {
   biometricAvailable: boolean = false;
   biometricType: string = 'huella digital';
 
-  mileageRate = environment.app.mileageRate;
+  mileageRate: number|null = null;
+  mileageCurrency: string|null = null;
+  private tripsApi=inject(TripService);
   appVersion = environment.app.version;
 
   constructor() {
     addIcons({
-      personOutline, carOutline, settingsOutline, logOutOutline,
-      cameraOutline, createOutline, trashOutline, addOutline,
-      speedometerOutline, timeOutline, locationOutline, shieldCheckmarkOutline,
-      fingerPrintOutline, informationCircleOutline, briefcaseOutline, imageOutline,
-      chevronForwardOutline, checkmarkOutline, closeOutline
+      personOutline,
+      carOutline,
+      settingsOutline,
+      logOutOutline,
+      cameraOutline,
+      createOutline,
+      trashOutline,
+      addOutline,
+      speedometerOutline,
+      timeOutline,
+      locationOutline,
+      shieldCheckmarkOutline,
+      fingerPrintOutline,
+      informationCircleOutline,
+      briefcaseOutline,
+      imageOutline,
+      chevronForwardOutline,
+      checkmarkOutline,
+      closeOutline,
     });
   }
 
   async ngOnInit() {
+    this.tripsApi.getMileageConfiguration().subscribe({next:c=>{this.mileageRate=c.mileageRate;this.mileageCurrency=c.currency;},error:()=>{this.mileageRate=null;}});
     await this.loadUserData();
     await this.loadBiometricAvailability();
     await this.loadSettings();
@@ -96,13 +175,24 @@ export class ProfilePage implements OnInit {
   }
 
   async loadUserData() {
-    this.authService.currentCustomer$.subscribe((customer: ICustomerProfile | null) => {
-      this.user = customer;
-    });
+    this.authService.currentCustomer$.subscribe(
+      (customer: ICustomerProfile | null) => {
+        this.user = customer;
+      }
+    );
 
     const { value } = await Preferences.get({ key: 'profilePhoto' });
     if (value) {
       this.profilePhoto = value;
+    }
+
+    try {
+      const contact = await firstValueFrom(this.authService.getMyCustomerContact());
+      if (contact.avatarFileId) {
+        this.profilePhoto = `${environment.apiUrl}/storage/avatars/${contact.avatarFileId}`;
+      }
+    } catch (error) {
+      console.error('Error cargando la foto de perfil:', error);
     }
   }
 
@@ -113,7 +203,9 @@ export class ProfilePage implements OnInit {
         this.autoStopMinutes = parseInt(autoStop.value, 10);
       }
 
-      const drivingDetection = await Preferences.get({ key: 'drivingDetectionEnabled' });
+      const drivingDetection = await Preferences.get({
+        key: 'drivingDetectionEnabled',
+      });
       this.drivingDetectionEnabled = drivingDetection.value !== 'false';
 
       const purpose = await Preferences.get({ key: 'defaultPurpose' });
@@ -129,42 +221,18 @@ export class ProfilePage implements OnInit {
   }
 
   async loadVehicles() {
-    try {
-      const decodedToken = this.customerTokenService.decodeToken();
-
-      if (!decodedToken) {
-        throw new Error('No se pudo decodificar el token JWT');
-      }
-
-      const customerId = decodedToken.nameid;
-      const companyId = decodedToken.companyId;
-
-      if (!customerId || !companyId) {
-        throw new Error('CustomerId o CompanyId no encontrado en el token');
-      }
-
-      const data = { customerId, companyId };
-
-      this.vehicleService.getProfileVehicle(data).subscribe({
-        next: (response: any) => {
-          if (response?.success && response?.data) {
-            this.vehicles = [response.data];
-          }
-        },
-        error: (error) => {
-          console.error('Error cargando vehículos:', error);
-        }
-      });
-
-    } catch (error) {
-      console.error('Error cargando vehículos:', error);
-    }
+    this.vehicles = [];
+    this.vehicleService.getVehicles().subscribe({
+      next: vehicles => { this.vehicles = vehicles; },
+      error: () => this.showToast('Error loading vehicles', 'danger'),
+    });
   }
 
-  async saveVehicles() {
-    await Preferences.set({
-      key: 'vehicles',
-      value: JSON.stringify(this.vehicles)
+  private persistVehicle(vehicle: Vehicle): void {
+    if (!vehicle.id) return;
+    this.vehicleService.updateVehicle(vehicle.id, vehicle).subscribe({
+      next: () => { this.loadVehicles(); this.showToast('Vehicle updated'); },
+      error: () => { this.loadVehicles(); this.showToast('Error updating vehicle', 'danger'); },
     });
   }
 
@@ -179,19 +247,19 @@ export class ProfilePage implements OnInit {
         {
           text: 'Tomar Foto',
           icon: 'camera-outline',
-          handler: () => this.takePhoto('profile')
+          handler: () => this.takePhoto('profile'),
         },
         {
           text: 'Elegir de Galería',
           icon: 'image-outline',
-          handler: () => this.pickFromGallery('profile')
+          handler: () => this.pickFromGallery('profile'),
         },
         {
           text: 'Cancelar',
           icon: 'close-outline',
-          role: 'cancel'
-        }
-      ]
+          role: 'cancel',
+        },
+      ],
     });
     await actionSheet.present();
   }
@@ -202,19 +270,14 @@ export class ProfilePage implements OnInit {
         quality: 80,
         allowEditing: true,
         resultType: CameraResultType.Base64,
-        source: CameraSource.Camera
+        source: CameraSource.Camera,
       });
 
-      const imageData = `data:image/jpeg;base64,${image.base64String}`;
 
       if (type === 'profile') {
-        this.profilePhoto = imageData;
-        await Preferences.set({ key: 'profilePhoto', value: imageData });
-        this.showToast('Foto de perfil actualizada');
+        await this.uploadProfilePhoto(image.base64String);
       } else if (vehicle) {
-        vehicle.photo = imageData;
-        await this.saveVehicles();
-        this.showToast('Foto del vehículo actualizada');
+        this.showToast('Use an HTTPS URL in the vehicle photo editor', 'warning');
       }
     } catch (error) {
       console.error('Error tomando foto:', error);
@@ -227,23 +290,104 @@ export class ProfilePage implements OnInit {
         quality: 80,
         allowEditing: true,
         resultType: CameraResultType.Base64,
-        source: CameraSource.Photos
+        source: CameraSource.Photos,
       });
 
-      const imageData = `data:image/jpeg;base64,${image.base64String}`;
 
       if (type === 'profile') {
-        this.profilePhoto = imageData;
-        await Preferences.set({ key: 'profilePhoto', value: imageData });
-        this.showToast('Foto de perfil actualizada');
+        await this.uploadProfilePhoto(image.base64String);
       } else if (vehicle) {
-        vehicle.photo = imageData;
-        await this.saveVehicles();
-        this.showToast('Foto del vehículo actualizada');
+        this.showToast('Use an HTTPS URL in the vehicle photo editor', 'warning');
       }
     } catch (error) {
       console.error('Error seleccionando foto:', error);
     }
+  }
+
+  private async uploadProfilePhoto(base64: string | undefined): Promise<void> {
+    if (!base64) {
+      await this.showToast('No se pudo leer la foto seleccionada', 'danger');
+      return;
+    }
+
+    const loading = await this.loadingController.create({
+      message: 'Subiendo y verificando la foto...',
+      spinner: 'crescent',
+    });
+    await loading.present();
+
+    try {
+      const file = this.base64ToFile(base64, 'profile.jpg');
+      const { fileId } = await firstValueFrom(
+        this.authService.uploadMyCustomerAvatar(file)
+      );
+
+      const result = await this.waitForAvatarApproval(fileId);
+      if (result === 'approved') {
+        this.profilePhoto = `${environment.apiUrl}/storage/avatars/${fileId}`;
+        await Preferences.remove({ key: 'profilePhoto' });
+        await this.showToast('Foto de perfil actualizada');
+      } else if (result === 'pending') {
+        await this.showToast(
+          'La foto está en revisión y aparecerá cuando sea aprobada',
+          'medium'
+        );
+      } else {
+        await this.showToast(
+          'La foto no fue aprobada. Elige otra imagen.',
+          'warning'
+        );
+      }
+    } catch (error) {
+      console.error('Error subiendo foto de perfil:', error);
+      await this.showToast('No se pudo subir la foto de perfil', 'danger');
+    } finally {
+      await loading.dismiss();
+    }
+  }
+
+  private base64ToFile(base64: string, fileName: string): File {
+    const bytes = Uint8Array.from(atob(base64), (character) =>
+      character.charCodeAt(0)
+    );
+    return new File([bytes], fileName, { type: 'image/jpeg' });
+  }
+
+  private async waitForAvatarApproval(
+    fileId: string
+  ): Promise<'approved' | 'pending' | 'rejected'> {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+
+      let contact;
+      try {
+        contact = await firstValueFrom(this.authService.getMyCustomerContact());
+      } catch {
+        continue;
+      }
+
+      if (contact.avatarFileId === fileId) return 'approved';
+      if (
+        contact.avatarModerationFileId === fileId &&
+        contact.avatarModerationStatus === 'blocked'
+      ) {
+        return 'rejected';
+      }
+      if (
+        contact.avatarModerationFileId === fileId &&
+        contact.avatarModerationStatus === 'under_review'
+      ) {
+        continue;
+      }
+      if (
+        contact.avatarUploadStatus === 'failed' ||
+        contact.pendingAvatarFileId !== fileId
+      ) {
+        return 'rejected';
+      }
+    }
+
+    return 'pending';
   }
 
   // ===========================================
@@ -251,20 +395,6 @@ export class ProfilePage implements OnInit {
   // ===========================================
 
   async addVehicle() {
-
-    const decodedToken = this.customerTokenService.decodeToken();
-
-    if (!decodedToken) {
-      throw new Error('No se pudo decodificar el token JWT');
-    }
-
-    const customerId = decodedToken.nameid;
-    const companyId = decodedToken.companyId;
-
-    if (!customerId || !companyId) {
-      throw new Error('CustomerId o CompanyId no encontrado en el token');
-    }
-
     const alert = await this.alertController.create({
       header: 'Agregar Vehículo',
       message: 'Todos los campos son opcionales excepto la matrícula',
@@ -273,7 +403,11 @@ export class ProfilePage implements OnInit {
         { name: 'make', type: 'text', placeholder: 'Marca (ej: Toyota)' },
         { name: 'model', type: 'text', placeholder: 'Modelo (ej: Camry)' },
         { name: 'year', type: 'number', placeholder: 'Año (ej: 2020)' },
-        { name: 'currentMileage', type: 'number', placeholder: 'Millaje actual' }
+        {
+          name: 'currentMileage',
+          type: 'number',
+          placeholder: 'Millaje actual',
+        },
       ],
       buttons: [
         { text: 'Cancelar', role: 'cancel' },
@@ -285,41 +419,43 @@ export class ProfilePage implements OnInit {
               return false;
             }
 
-            const newVehicle: Vehicle = {
-              customerId: customerId,
-              companyId: companyId,
+            const newVehicle: VehicleInput = {
               plate: data.plate.trim().toUpperCase(),
               photo: data.photo || undefined,
               make: data.make?.trim() || environment.make,
               model: data.model?.trim() || environment.model,
               year: data.year ? parseInt(data.year, 10) : environment.year,
               color: data.color?.trim() || environment.color,
-              currentMileage: data.currentMileage ? parseInt(data.currentMileage, 10) : 0,
-              updatedAt: new Date().toDateString(),
-              isDefault: true
+              currentMileage: data.currentMileage
+                ? parseInt(data.currentMileage, 10)
+                : 0,
+              isDefault: this.vehicles.length === 0,
             };
 
-            return this.vehicleService.createVehicleProfile(newVehicle).subscribe({
-              next: async (response: boolean) => {
-                if (response) {
-                  this.showToast('The vehicle profile was created successfully');
-                  this.loadVehicles();
-                  return true;
-                }
+            return this.vehicleService
+              .createVehicleProfile(newVehicle)
+              .subscribe({
+                next: async (response: Vehicle) => {
+                  if (response) {
+                    this.showToast(
+                      'The vehicle profile was created successfully'
+                    );
+                    this.loadVehicles();
+                    return true;
+                  }
 
-                this.showToast('The vehicle cannot be created');
-                return false;
-              },
-              error: (error) => {
-                console.error('Error adding vehicle:', error);
-                this.showToast('Error adding vehicle');
-                return false;
-              }
-            });
-            //this.saveVehicles();
-          }
-        }
-      ]
+                  this.showToast('The vehicle cannot be created');
+                  return false;
+                },
+                error: (error) => {
+                  console.error('Error adding vehicle:', error);
+                  this.showToast('Error adding vehicle');
+                  return false;
+                },
+              });
+          },
+        },
+      ],
     });
     await alert.present();
   }
@@ -328,11 +464,36 @@ export class ProfilePage implements OnInit {
     const alert = await this.alertController.create({
       header: 'Editar Vehículo',
       inputs: [
-        { name: 'plate', type: 'text', placeholder: 'Matrícula/Placa', value: vehicle.plate },
-        { name: 'make', type: 'text', placeholder: 'Marca', value: vehicle.make || '' },
-        { name: 'model', type: 'text', placeholder: 'Modelo', value: vehicle.model || '' },
-        { name: 'year', type: 'number', placeholder: 'Año', value: vehicle.year?.toString() || '' },
-        { name: 'currentMileage', type: 'number', placeholder: 'Millaje actual', value: vehicle.currentMileage?.toString() || '0' }
+        {
+          name: 'plate',
+          type: 'text',
+          placeholder: 'Matrícula/Placa',
+          value: vehicle.plate,
+        },
+        {
+          name: 'make',
+          type: 'text',
+          placeholder: 'Marca',
+          value: vehicle.make || '',
+        },
+        {
+          name: 'model',
+          type: 'text',
+          placeholder: 'Modelo',
+          value: vehicle.model || '',
+        },
+        {
+          name: 'year',
+          type: 'number',
+          placeholder: 'Año',
+          value: vehicle.year?.toString() || '',
+        },
+        {
+          name: 'currentMileage',
+          type: 'number',
+          placeholder: 'Millaje actual',
+          value: vehicle.currentMileage?.toString() || '0',
+        },
       ],
       buttons: [
         { text: 'Cancelar', role: 'cancel' },
@@ -348,15 +509,16 @@ export class ProfilePage implements OnInit {
             vehicle.make = data.make?.trim() || undefined;
             vehicle.model = data.model?.trim() || undefined;
             vehicle.year = data.year ? parseInt(data.year, 10) : undefined;
-            vehicle.currentMileage = data.currentMileage ? parseInt(data.currentMileage, 10) : 0;
+            vehicle.currentMileage = data.currentMileage
+              ? parseInt(data.currentMileage, 10)
+              : 0;
             vehicle.updatedAt = new Date().toISOString();
 
-            this.saveVehicles();
-            this.showToast('Vehículo actualizado');
+            this.persistVehicle(vehicle);
             return true;
-          }
-        }
-      ]
+          },
+        },
+      ],
     });
     await alert.present();
   }
@@ -371,54 +533,59 @@ export class ProfilePage implements OnInit {
           text: 'Eliminar',
           role: 'destructive',
           handler: () => {
-            this.vehicles = this.vehicles.filter(v => v.id !== vehicle.id);
-            if (vehicle.isDefault && this.vehicles.length > 0) {
-              this.vehicles[0].isDefault = true;
-            }
-            this.saveVehicles();
-            this.showToast('Vehículo eliminado');
-          }
-        }
-      ]
+            if (!vehicle.id) return;
+            this.vehicleService.deleteVehicle(vehicle.id).subscribe({
+              next: () => { this.loadVehicles(); this.showToast('Vehicle deleted'); },
+              error: () => this.showToast('Error deleting vehicle', 'danger'),
+            });
+          },
+        },
+      ],
     });
     await alert.present();
   }
 
   async setDefaultVehicle(vehicle: Vehicle) {
-    this.vehicles.forEach(v => v.isDefault = false);
-    vehicle.isDefault = true;
-    await this.saveVehicles();
-    this.showToast(`${vehicle.plate} es ahora el vehículo activo`);
+    this.persistVehicle({ ...vehicle, isDefault: true });
   }
 
   async changeVehiclePhoto(vehicle: Vehicle) {
-    const actionSheet = await this.actionSheetController.create({
-      header: 'Foto del Vehículo',
+    const alert = await this.alertController.create({
+      header: 'Vehicle photo',
+      inputs: [{ name: 'photo', type: 'url', placeholder: 'HTTPS photo URL', value: vehicle.photo || '' }],
       buttons: [
-        { text: 'Tomar Foto', icon: 'camera-outline', handler: () => this.takePhoto('vehicle', vehicle) },
-        { text: 'Elegir de Galería', icon: 'image-outline', handler: () => this.pickFromGallery('vehicle', vehicle) },
-        { text: 'Cancelar', icon: 'close-outline', role: 'cancel' }
-      ]
+        { text: 'Cancel', role: 'cancel' },
+        { text: 'Save', handler: data => {
+          if (data.photo && !/^https:\/\//i.test(data.photo)) {
+            this.showToast('Enter an HTTPS photo URL', 'warning');
+            return false;
+          }
+          this.persistVehicle({ ...vehicle, photo: data.photo || undefined });
+          return true;
+        } },
+      ],
     });
-    await actionSheet.present();
-  }
-
-  async loadBiometricAvailability() {
-    const biometryType = await this.authService.checkBiometricAvailability();
-    if (biometryType) {
-      this.biometricAvailable = true;
-      // Importar BiometryType para comparar
-      const { BiometryType } = await import('@capgo/capacitor-native-biometric');
-      this.biometricType = biometryType === BiometryType.FACE_ID ? 'Face ID' : 'huella digital';
-    }
+    await alert.present();
   }
 
   // ===========================================
   // CONFIGURACIÓN
   // ===========================================
 
+  async loadBiometricAvailability() {
+    const biometryType = await this.authService.checkBiometricAvailability();
+    if (biometryType) {
+      this.biometricAvailable = true;
+      const { BiometryType } = await import('@capgo/capacitor-native-biometric');
+      this.biometricType = biometryType === BiometryType.FACE_ID ? 'Face ID' : 'huella digital';
+    }
+  }
+
   async saveAutoStopSetting() {
-    await Preferences.set({ key: 'autoStopMinutes', value: this.autoStopMinutes.toString() });
+    await Preferences.set({
+      key: 'autoStopMinutes',
+      value: this.autoStopMinutes.toString(),
+    });
     this.gpsService.setAutoStopMinutes(this.autoStopMinutes);
 
     if (this.autoStopMinutes === 0) {
@@ -429,7 +596,10 @@ export class ProfilePage implements OnInit {
   }
 
   async saveDrivingDetectionSetting() {
-    await Preferences.set({ key: 'drivingDetectionEnabled', value: this.drivingDetectionEnabled.toString() });
+    await Preferences.set({
+      key: 'drivingDetectionEnabled',
+      value: this.drivingDetectionEnabled.toString(),
+    });
 
     if (this.drivingDetectionEnabled) {
       this.gpsService.startDrivingDetection();
@@ -441,19 +611,25 @@ export class ProfilePage implements OnInit {
   }
 
   async saveDefaultPurpose() {
-    await Preferences.set({ key: 'defaultPurpose', value: this.defaultPurpose });
+    await Preferences.set({
+      key: 'defaultPurpose',
+      value: this.defaultPurpose,
+    });
   }
 
   async toggleBiometric() {
     if (this.biometricEnabled) {
       // Activar: verificar identidad primero
       try {
-        const { NativeBiometric } = await import('@capgo/capacitor-native-biometric');
+        const { NativeBiometric } = await import(
+          '@capgo/capacitor-native-biometric'
+        );
         await NativeBiometric.verifyIdentity({
           reason: `Confirma tu ${this.biometricType} para activar el login rápido`,
           title: 'Verificar identidad',
           subtitle: `Usa tu ${this.biometricType}`,
-          description: 'Necesitamos verificar tu identidad para activar esta función'
+          description:
+            'Necesitamos verificar tu identidad para activar esta función',
         });
 
         // Verificación exitosa → guardar credenciales
@@ -493,38 +669,46 @@ export class ProfilePage implements OnInit {
       buttons: [
         { text: 'Cancelar', role: 'cancel' },
         {
-          text: 'Cerrar Sesión', role: 'destructive', handler: () => this.authService.logout().subscribe({
-            next: async (item: boolean) => {
-              if (item) {
-                await this.router.navigate(['/login'], { replaceUrl: true });
-              }
+          text: 'Cerrar Sesión',
+          role: 'destructive',
+          handler: () =>
+            this.authService.logout().subscribe({
+              next: async (item: boolean) => {
+                if (item) {
+                  await this.router.navigate(['/login'], { replaceUrl: true });
+                }
+              },
+              error: async (error) => {
+                console.error('Error cerrando sesión:', error);
+                await this.showToast('Error cerrando sesión', 'danger');
+              },
+              complete: () => {
+                this.customerTokenService.removeTokens();
+                this.authService.currentCustomerSubject.next(null);
 
-            },
-            error: async (error) => {
-              console.error('Error cerrando sesión:', error);
-              await this.showToast('Error cerrando sesión', 'danger');
-            },
-            complete: () => {
-              this.customerTokenService.removeTokens();
-              this.authService.currentCustomerSubject.next(null);
-
-              const keysToRemove = Object.keys(localStorage).filter((key) =>
-                key.startsWith('customer_') ||
-                key.includes('chat_') ||
-                key.includes('webrtc_') ||
-                key.includes('TokenCloud')
-              );
-              keysToRemove.forEach((key) => localStorage.removeItem(key));
-            },
-          })
-        }
-      ]
+                const keysToRemove = Object.keys(localStorage).filter(
+                  (key) =>
+                    key.startsWith('customer_') ||
+                    key.includes('chat_') ||
+                    key.includes('webrtc_') ||
+                    key.includes('TokenCloud')
+                );
+                keysToRemove.forEach((key) => localStorage.removeItem(key));
+              },
+            }),
+        },
+      ],
     });
     await alert.present();
   }
 
   private async showToast(message: string, color: string = 'success') {
-    const toast = await this.toastController.create({ message, duration: 2000, position: 'bottom', color });
+    const toast = await this.toastController.create({
+      message,
+      duration: 2000,
+      position: 'bottom',
+      color,
+    });
     await toast.present();
   }
 }

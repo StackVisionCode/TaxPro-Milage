@@ -71,3 +71,6 @@ testem.log
 # System files
 .DS_Store
 Thumbs.db
+
+# Added by MD Pretty View — Markdown Preview Enhanced pan/zoom assets
+.crossnote/

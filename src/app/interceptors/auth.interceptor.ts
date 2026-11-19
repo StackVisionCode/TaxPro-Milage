@@ -1,72 +1,70 @@
-/**
- * TaxPro Mileage - Interceptor de Autenticación
- * ==============================================
- * Este interceptor agrega automáticamente el token JWT
- * a todas las peticiones HTTP que van hacia la API.
- *
- * También maneja:
- * - Redirección al login si no hay sesión válida
- *
- * NOTA: No inyectar CustomerAuthService aquí para evitar
- * dependencia circular (NG0200). Solo usar CustomerTokenService.
- */
-
-import { HttpInterceptorFn, HttpRequest, HttpHandlerFn, HttpErrorResponse } from '@angular/common/http';
+import {
+  HttpErrorResponse,
+  HttpHandlerFn,
+  HttpInterceptorFn,
+  HttpRequest,
+} from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { catchError, throwError } from 'rxjs';
+import { catchError, switchMap, throwError } from 'rxjs';
 
-import { CustomerTokenService } from '../services/customer-token.service';
 import { environment } from '../../environments/environment';
+import { CustomerSessionRefreshService } from '../services/customer-session-refresh.service';
+import { CustomerTokenService } from '../services/customer-token.service';
 
-/**
- * Interceptor funcional de autenticación
- * Se aplica a todas las peticiones HTTP
- */
 export const authInterceptor: HttpInterceptorFn = (
   req: HttpRequest<unknown>,
   next: HttpHandlerFn
 ) => {
   const tokenService = inject(CustomerTokenService);
+  const refreshService = inject(CustomerSessionRefreshService);
   const router = inject(Router);
 
-  // No interceptar peticiones que no son a nuestra API
-  if (!req.url.startsWith(environment.apiUrl)) {
-    return next(req);
-  }
+  if (!req.url.startsWith(environment.apiUrl)) return next(req);
 
-  // No interceptar la petición de login ni force-logout
-  if (req.url.includes(environment.endpoints.login) || req.url.includes('/auth/client/force-logout')) {
-    return next(req);
-  }
-
-  // Obtener el token actual
+  const isLogin = req.url.includes(environment.endpoints.login);
+  const isRefresh = req.url.includes(environment.endpoints.refreshToken);
+  const identity=()=>{const c=tokenService.decodeToken();return c ? `${c.tenant_id}:${c.customer_id ?? ''}:${c.sub}` : null;};
+  const owner=identity();
   const token = tokenService.token;
+  const request = token && !isLogin && !isRefresh
+    ? addTokenToRequest(req, token)
+    : req;
 
-  // Si hay token, agregarlo al header
-  let authReq = req;
-  if (token) {
-    authReq = addTokenToRequest(req, token);
-  }
-
-  // Ejecutar la petición
-  return next(authReq).pipe(
+  return next(request).pipe(
     catchError((error: HttpErrorResponse) => {
-      // Si el error es 401 (no autorizado) o 403 (prohibido), limpiar tokens y redirigir
-      if (error.status === 401 || error.status === 403) {
+      if(identity()!==owner) return throwError(()=>error);
+      const canRefresh =
+        error.status === 401 &&
+        !isLogin &&
+        !isRefresh &&
+        !!tokenService.refreshToken;
+
+      if (canRefresh) {
+        return refreshService.refreshAccessToken().pipe(
+          switchMap((accessToken) => identity()===owner
+            ? next(addTokenToRequest(req, accessToken))
+            : throwError(()=>new Error('La cuenta cambio durante la solicitud.'))),
+          catchError((refreshError) => {
+            if(identity()===owner) {
+              tokenService.removeTokens();
+              router.navigate(['/login']);
+            }
+            return throwError(() => refreshError);
+          })
+        );
+      }
+
+      if (error.status === 401 && !isLogin) {
         tokenService.removeTokens();
         router.navigate(['/login']);
       }
 
-      // Para otros errores, simplemente propagarlos
       return throwError(() => error);
     })
   );
 };
 
-/**
- * Agrega el token JWT al header de la petición
- */
 function addTokenToRequest(
   request: HttpRequest<unknown>,
   token: string
@@ -74,7 +72,6 @@ function addTokenToRequest(
   return request.clone({
     setHeaders: {
       Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    }
+    },
   });
 }

@@ -10,7 +10,15 @@
  * - Eliminar el viaje
  */
 
-import { Component, OnInit, inject, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import {
+  Component,
+  OnInit,
+  OnDestroy,
+  inject,
+  ViewChild,
+  ElementRef,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -41,8 +49,8 @@ import {
   AlertController,
   ToastController,
   LoadingController,
-  ActionSheetController
-} from '@ionic/angular/standalone';
+  ActionSheetController,
+} from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import {
   locationOutline,
@@ -62,7 +70,7 @@ import {
   closeOutline,
   mapOutline,
   ellipsisVertical,
-  alertCircleOutline
+  alertCircleOutline,
 } from 'ionicons/icons';
 
 import { TripService } from '../../services/trip.service';
@@ -71,9 +79,7 @@ import { Share } from '@capacitor/share';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { environment } from '../../../environments/environment';
-
-// Declaración global para Google Maps
-declare const google: any;
+import { LngLatBounds, Map, Marker } from 'mapbox-gl/esm';
 
 @Component({
   selector: 'app-trip-detail',
@@ -103,12 +109,13 @@ declare const google: any;
     IonSelectOption,
     IonGrid,
     IonRow,
-    IonCol
+    IonCol,
   ],
   templateUrl: './trip-detail.page.html',
-  styleUrl: './trip-detail.page.scss'
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styleUrl: './trip-detail.page.scss',
 })
-export class TripDetailPage implements OnInit, AfterViewInit {
+export class TripDetailPage implements OnInit, OnDestroy {
   // Servicios
   private route = inject(ActivatedRoute);
   private router = inject(Router);
@@ -141,11 +148,9 @@ export class TripDetailPage implements OnInit, AfterViewInit {
   endAddress: string = '';
 
   // Tarifa por milla (desde environment.app.mileageRate)
-  private mileageRate = environment.app.mileageRate;
 
-  // Google Maps
-  private map: any;
-  private routeLine: any;
+
+  private map: Map | null = null;
 
   constructor() {
     addIcons({
@@ -166,7 +171,7 @@ export class TripDetailPage implements OnInit, AfterViewInit {
       closeOutline,
       mapOutline,
       ellipsisVertical,
-      alertCircleOutline
+      alertCircleOutline,
     });
   }
 
@@ -181,14 +186,18 @@ export class TripDetailPage implements OnInit, AfterViewInit {
     }
   }
 
-  ngAfterViewInit() { }
+  ngOnDestroy(): void {
+    this.map?.remove();
+    this.map = null;
+  }
 
   async loadTrip(): Promise<void> {
     this.isLoading = true;
     this.error = null;
 
     try {
-      this.trip = await this.tripService.getTripById(this.tripId).toPromise() || null;
+      this.trip =
+        (await this.tripService.getTripById(this.tripId).toPromise()) || null;
 
       if (this.trip) {
         this.editPurpose = this.trip.purpose;
@@ -205,120 +214,121 @@ export class TripDetailPage implements OnInit, AfterViewInit {
     }
   }
 
-  private initMap(): void {
+  private async initMap(): Promise<void> {
     if (!this.trip?.route || this.trip.route.length === 0) {
       console.log('No hay ruta para mostrar');
       return;
     }
 
     try {
-      if (typeof google === 'undefined' || !google.maps) {
-        console.warn('Google Maps no está disponible');
-        return;
-      }
-
       const route = this.trip.route;
       const startPoint = route[0];
       const endPoint = route[route.length - 1];
 
-      const bounds = new google.maps.LatLngBounds();
+      const bounds = new LngLatBounds();
       route.forEach((point: GpsPoint) => {
-        bounds.extend({ lat: point.latitude, lng: point.longitude });
+        bounds.extend([point.longitude, point.latitude]);
       });
 
-      this.map = new google.maps.Map(this.mapElement.nativeElement, {
-        center: bounds.getCenter(),
+      this.map?.remove();
+      this.map = new Map({
+        accessToken: environment.mapbox.accessToken,
+        container: this.mapElement.nativeElement,
+        style: environment.mapbox.style,
+        center: [startPoint.longitude, startPoint.latitude],
         zoom: 14,
-        disableDefaultUI: true,
-        zoomControl: true,
-        mapTypeControl: false,
-        streetViewControl: false,
-        styles: this.getMapStyles()
       });
 
-      this.map.fitBounds(bounds, { padding: 50 });
-
-      const routePath = route.map((point: GpsPoint) => ({
-        lat: point.latitude,
-        lng: point.longitude
-      }));
-
-      this.routeLine = new google.maps.Polyline({
-        path: routePath,
-        geodesic: true,
-        strokeColor: '#3182ce',
-        strokeOpacity: 1.0,
-        strokeWeight: 4
+      await new Promise<void>((resolve, reject) => {
+        this.map!.once('load', () => resolve());
+        this.map!.once('error', (event) => reject(event.error));
       });
 
-      this.routeLine.setMap(this.map);
+      const routePath: [number, number][] = route.map((point: GpsPoint) => [
+        point.longitude,
+        point.latitude,
+      ]);
 
-      new google.maps.Marker({
-        position: { lat: startPoint.latitude, lng: startPoint.longitude },
-        map: this.map,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 10,
-          fillColor: '#38a169',
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 3
+      this.map.addSource('trip-route', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'LineString', coordinates: routePath },
         },
-        title: 'Inicio'
+      });
+      this.map.addLayer({
+        id: 'trip-route-line',
+        type: 'line',
+        source: 'trip-route',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#3182ce',
+          'line-opacity': 1,
+          'line-width': 4,
+        },
       });
 
-      new google.maps.Marker({
-        position: { lat: endPoint.latitude, lng: endPoint.longitude },
-        map: this.map,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 10,
-          fillColor: '#e53e3e',
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 3
-        },
-        title: 'Fin'
-      });
+      new Marker({ color: '#38a169', scale: 0.8 })
+        .setLngLat([startPoint.longitude, startPoint.latitude])
+        .addTo(this.map);
+      new Marker({ color: '#e53e3e', scale: 0.8 })
+        .setLngLat([endPoint.longitude, endPoint.latitude])
+        .addTo(this.map);
+
+      this.map.fitBounds(bounds, { padding: 50, maxZoom: 16 });
 
       this.mapLoaded = true;
 
-      this.getAddressFromCoords(startPoint.latitude, startPoint.longitude, 'start');
+      this.getAddressFromCoords(
+        startPoint.latitude,
+        startPoint.longitude,
+        'start'
+      );
       this.getAddressFromCoords(endPoint.latitude, endPoint.longitude, 'end');
-
     } catch (error) {
       console.error('Error inicializando mapa:', error);
     }
   }
 
-  private async getAddressFromCoords(lat: number, lng: number, type: 'start' | 'end'): Promise<void> {
-    if (typeof google === 'undefined' || !google.maps) return;
-
-    const geocoder = new google.maps.Geocoder();
-
-    geocoder.geocode({ location: { lat, lng } }, (results: any[], status: string) => {
-      if (status === 'OK' && results[0]) {
-        const address = results[0].formatted_address;
-        if (type === 'start') {
-          this.startAddress = address;
-        } else {
-          this.endAddress = address;
-        }
-      }
+  private async getAddressFromCoords(
+    lat: number,
+    lng: number,
+    type: 'start' | 'end'
+  ): Promise<void> {
+    const params = new URLSearchParams({
+      longitude: String(lng),
+      latitude: String(lat),
+      access_token: environment.mapbox.accessToken,
     });
-  }
 
-  private getMapStyles(): any[] {
-    return [
-      { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
-      { featureType: 'transit', stylers: [{ visibility: 'off' }] }
-    ];
+    try {
+      const response = await fetch(
+        `https://api.mapbox.com/search/geocode/v6/reverse?${params}`
+      );
+      if (!response.ok) return;
+
+      const body = await response.json();
+      const feature = body?.features?.[0];
+      const address =
+        feature?.properties?.full_address ??
+        feature?.properties?.name ??
+        feature?.place_name;
+      if (!address) return;
+
+      if (type === 'start') this.startAddress = address;
+      else this.endAddress = address;
+    } catch (error) {
+      console.warn('No se pudo resolver la dirección con Mapbox:', error);
+    }
   }
 
   formatDate(dateString: string | undefined): string {
     if (!dateString) return '';
     try {
-      return format(new Date(dateString), "EEEE, d 'de' MMMM yyyy", { locale: es });
+      return format(new Date(dateString), "EEEE, d 'de' MMMM yyyy", {
+        locale: es,
+      });
     } catch {
       return dateString;
     }
@@ -343,9 +353,8 @@ export class TripDetailPage implements OnInit, AfterViewInit {
     return `${minutes}m`;
   }
 
-  calculateDeduction(): number {
-    if (!this.trip?.distanceMiles) return 0;
-    return this.trip.distanceMiles * this.mileageRate;
+  calculateDeduction(): number | null {
+    return this.trip?.estimatedAmount ?? null;
   }
 
   getPurposeLabel(purpose: TripPurpose | undefined): string {
@@ -353,7 +362,8 @@ export class TripDetailPage implements OnInit, AfterViewInit {
       business: 'Negocios',
       medical: 'Médico',
       moving: 'Mudanza',
-      personal: 'Personal'
+      personal: 'Personal',
+      charity: 'Beneficencia',
     };
     return labels[purpose || 'personal'];
   }
@@ -363,7 +373,8 @@ export class TripDetailPage implements OnInit, AfterViewInit {
       business: 'primary',
       medical: 'danger',
       moving: 'warning',
-      personal: 'medium'
+      personal: 'medium',
+      charity: 'tertiary',
     };
     return colors[purpose || 'personal'];
   }
@@ -372,11 +383,24 @@ export class TripDetailPage implements OnInit, AfterViewInit {
     const actionSheet = await this.actionSheetController.create({
       header: 'Opciones',
       buttons: [
-        { text: 'Editar', icon: 'create-outline', handler: () => this.startEdit() },
-        { text: 'Compartir', icon: 'share-outline', handler: () => this.shareTrip() },
-        { text: 'Eliminar', icon: 'trash-outline', role: 'destructive', handler: () => this.confirmDelete() },
-        { text: 'Cancelar', icon: 'close-outline', role: 'cancel' }
-      ]
+        {
+          text: 'Editar',
+          icon: 'create-outline',
+          handler: () => this.startEdit(),
+        },
+        {
+          text: 'Compartir',
+          icon: 'share-outline',
+          handler: () => this.shareTrip(),
+        },
+        {
+          text: 'Eliminar',
+          icon: 'trash-outline',
+          role: 'destructive',
+          handler: () => this.confirmDelete(),
+        },
+        { text: 'Cancelar', icon: 'close-outline', role: 'cancel' },
+      ],
     });
     await actionSheet.present();
   }
@@ -395,16 +419,18 @@ export class TripDetailPage implements OnInit, AfterViewInit {
 
   async saveChanges(): Promise<void> {
     if (!this.trip) return;
+    if(this.trip.syncState==='pending') {await this.showToast('Espera a que el recorrido se sincronice.');return;}
     this.isSaving = true;
 
     try {
-      await this.tripService.updateTrip(this.trip.id, {
-        purpose: this.editPurpose,
-        notes: this.editNotes
-      }).toPromise();
+      const updated = await this.tripService
+        .updateTrip(this.trip.id, {
+          purpose: this.editPurpose,
+          notes: this.editNotes,
+        })
+        .toPromise();
 
-      this.trip.purpose = this.editPurpose;
-      this.trip.notes = this.editNotes;
+      if(updated) this.trip = updated;
       this.isEditing = false;
       await this.showToast('Viaje actualizado');
     } catch (error: any) {
@@ -425,12 +451,16 @@ export class TripDetailPage implements OnInit, AfterViewInit {
 🚗 Distancia: ${this.trip.distanceMiles.toFixed(2)} millas
 ⏱️ Duración: ${this.formatDurationShort(this.trip.durationSeconds)}
 🏷️ Propósito: ${this.getPurposeLabel(this.trip.purpose)}
-💰 Deducción estimada: $${deduction.toFixed(2)}
+💰 Deducción estimada: ${deduction == null ? 'Sin tarifa configurada' : deduction.toFixed(2)+' '+(this.trip.currency ?? '')}
 
 Registrado con TaxPro Mileage`;
 
     try {
-      await Share.share({ title: 'Resumen de Viaje', text: text, dialogTitle: 'Compartir viaje' });
+      await Share.share({
+        title: 'Resumen de Viaje',
+        text: text,
+        dialogTitle: 'Compartir viaje',
+      });
     } catch (error) {
       console.error('Error compartiendo:', error);
     }
@@ -439,11 +469,16 @@ Registrado con TaxPro Mileage`;
   async confirmDelete(): Promise<void> {
     const alert = await this.alertController.create({
       header: 'Eliminar Viaje',
-      message: '¿Estás seguro de que deseas eliminar este viaje? Esta acción no se puede deshacer.',
+      message:
+        '¿Estás seguro de que deseas eliminar este viaje? Esta acción no se puede deshacer.',
       buttons: [
         { text: 'Cancelar', role: 'cancel' },
-        { text: 'Eliminar', role: 'destructive', handler: () => this.deleteTrip() }
-      ]
+        {
+          text: 'Eliminar',
+          role: 'destructive',
+          handler: () => this.deleteTrip(),
+        },
+      ],
     });
     await alert.present();
   }
@@ -451,7 +486,10 @@ Registrado con TaxPro Mileage`;
   async deleteTrip(): Promise<void> {
     if (!this.trip) return;
 
-    const loading = await this.loadingController.create({ message: 'Eliminando viaje...' });
+    if(this.trip.syncState==='pending') {await this.showToast('Espera a que el recorrido se sincronice.');return;}
+    const loading = await this.loadingController.create({
+      message: 'Eliminando viaje...',
+    });
     await loading.present();
 
     try {
@@ -466,12 +504,15 @@ Registrado con TaxPro Mileage`;
     }
   }
 
-  private async showToast(message: string, color: string = 'success'): Promise<void> {
+  private async showToast(
+    message: string,
+    color: string = 'success'
+  ): Promise<void> {
     const toast = await this.toastController.create({
       message,
       duration: 2000,
       position: 'bottom',
-      color
+      color,
     });
     await toast.present();
   }

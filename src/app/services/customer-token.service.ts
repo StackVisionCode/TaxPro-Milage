@@ -1,126 +1,121 @@
-import { Injectable } from "@angular/core"
-import { BehaviorSubject } from "rxjs"
-import {jwtDecode} from "jwt-decode"
+import { Injectable } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
+import { jwtDecode } from 'jwt-decode';
 
-
-export interface CustomerDecodedToken {
+interface TaxVisionTokenClaims {
   sub: string;
-  nameid: string;
   email: string;
-  unique_name: string;
   jti: string;
   sid: string;
-  given_name?: string;
-  family_name?: string;
-  companyId: string;
-  customerStatus?: string;
-  roles?: string | string[];
-  perms?: string | string[];
-  portal: string | string[];
-
+  tenant_id: string;
+  actor_type: string;
+  customer_id?: string;
+  role?: string | string[];
+  zoneinfo?: string;
   exp: number;
 }
 
-@Injectable({
-  providedIn: "root",
-})
-export class CustomerTokenService {
-  private readonly TOKEN_KEY = "customer_auth_token"
-  private readonly REFRESH_TOKEN_KEY = "customer_refresh_token"
-  private tokenSubject = new BehaviorSubject<string | null>(this.getStoredToken())
+export interface CustomerDecodedToken extends TaxVisionTokenClaims {
+  nameid: string;
+  companyId: string;
+  roles: string[];
+  portal: string[];
+}
 
-  constructor() { }
+@Injectable({ providedIn: 'root' })
+export class CustomerTokenService {
+  private readonly TOKEN_KEY = 'customer_auth_token';
+  private readonly REFRESH_TOKEN_KEY = 'customer_refresh_token';
+  private tokenSubject = new BehaviorSubject<string | null>(
+    this.getStoredToken()
+  );
 
   decodeToken(): CustomerDecodedToken | null {
     const token = this.token;
-    if (token) {
-      try {
-        return jwtDecode<CustomerDecodedToken>(token);
-      } catch (error) {
-        console.error("Error decoding customer token:", error);
-        return null;
-      }
+    if (!token) return null;
+
+    try {
+      const claims = jwtDecode<TaxVisionTokenClaims>(token);
+      const roles = claims.role
+        ? Array.isArray(claims.role)
+          ? claims.role
+          : [claims.role]
+        : [];
+
+      return {
+        ...claims,
+        nameid: claims.customer_id ?? claims.sub,
+        companyId: claims.tenant_id,
+        roles,
+        portal: claims.actor_type === 'CustomerPortal' ? ['customer'] : [],
+      };
+    } catch (error) {
+      console.error('Error decoding customer token:', error);
+      return null;
     }
-    return null;
   }
 
   getStoredToken(): string | null {
-    return localStorage.getItem(this.TOKEN_KEY)
+    return localStorage.getItem(this.TOKEN_KEY);
   }
 
   getStoredRefreshToken(): string | null {
-    return localStorage.getItem(this.REFRESH_TOKEN_KEY)
+    return localStorage.getItem(this.REFRESH_TOKEN_KEY);
   }
 
   setTokens(accessToken: string, refreshToken: string): void {
-    localStorage.setItem(this.TOKEN_KEY, accessToken)
-    localStorage.setItem(this.REFRESH_TOKEN_KEY, refreshToken)
-    this.tokenSubject.next(accessToken)
+    localStorage.setItem(this.TOKEN_KEY, accessToken);
+    localStorage.setItem(this.REFRESH_TOKEN_KEY, refreshToken);
+    this.tokenSubject.next(accessToken);
   }
 
   removeTokens(): void {
-    localStorage.removeItem(this.TOKEN_KEY)
-    localStorage.removeItem(this.REFRESH_TOKEN_KEY)
-    this.tokenSubject.next(null)
+    localStorage.removeItem(this.TOKEN_KEY);
+    localStorage.removeItem(this.REFRESH_TOKEN_KEY);
+    this.tokenSubject.next(null);
   }
 
   getCustomerIdFromToken(): string | null {
-    const decodedToken = this.decodeToken();
-    return decodedToken ? decodedToken.sub : null;
+    return this.decodeToken()?.customer_id ?? null;
   }
 
   getUserIdFromToken(): string | null {
-    const decodedToken = this.decodeToken();
-    return decodedToken ? decodedToken.sub : null;
+    return this.decodeToken()?.sub ?? null;
   }
 
   getCustomerDisplayNameFromToken(): string | null {
-    const decodedToken = this.decodeToken();
-    return decodedToken ? decodedToken.unique_name : null;
+    return this.decodeToken()?.email ?? null;
   }
 
   getCustomerEmailFromToken(): string | null {
-    const decodedToken = this.decodeToken();
-    return decodedToken ? decodedToken.email : null;
+    return this.decodeToken()?.email ?? null;
   }
 
   getCompanyIdFromToken(): string | null {
-    const decodedToken = this.decodeToken();
-    return decodedToken ? decodedToken.companyId : null;
+    return this.decodeToken()?.tenant_id ?? null;
   }
 
   isCustomerPortalToken(): boolean {
-    const decodedToken = this.decodeToken();
-    return decodedToken?.portal?.includes('customer') ?? false;
+    return this.decodeToken()?.actor_type === 'CustomerPortal';
   }
 
   getCustomerRoles(): string[] {
-    const decodedToken = this.decodeToken();
-    if (!decodedToken?.roles) return [];
-
-    return Array.isArray(decodedToken.roles)
-      ? decodedToken.roles
-      : [decodedToken.roles];
+    return this.decodeToken()?.roles ?? [];
   }
 
   getCustomerPermissions(): string[] {
-    const decodedToken = this.decodeToken();
-    if (!decodedToken?.perms) return [];
-
-    return Array.isArray(decodedToken.perms)
-      ? decodedToken.perms
-      : [decodedToken.perms];
+    return [];
   }
 
   get token$() {
-    return this.tokenSubject.asObservable()
+    return this.tokenSubject.asObservable();
   }
 
   get token(): string | null {
-    return this.tokenSubject.value
+    return this.tokenSubject.value;
   }
 
   get refreshToken(): string | null {
-    return this.getStoredRefreshToken()
+    return this.getStoredRefreshToken();
   }
 }

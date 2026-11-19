@@ -19,27 +19,81 @@
  * - Chips con resumen del período
  */
 
-import { Component, OnInit, signal, computed } from '@angular/core';
+import {
+  Component,
+  OnInit,
+  signal,
+  computed,
+  ChangeDetectionStrategy,
+  inject,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import {
-  IonContent, IonHeader, IonTitle, IonToolbar, IonButton, IonIcon,
-  IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonItem, IonLabel,
-  IonList, IonChip, IonBadge, IonSearchbar, IonSegment, IonSegmentButton,
-  IonRefresher, IonRefresherContent, IonInfiniteScroll, IonInfiniteScrollContent,
-  IonDatetime, IonDatetimeButton, IonModal, IonSpinner, IonNote, IonText,
-  IonItemSliding, IonItemOptions, IonItemOption, RefresherEventDetail,
-  IonButtons, IonSkeletonText
-} from '@ionic/angular/standalone';
+  IonContent,
+  IonHeader,
+  IonTitle,
+  IonToolbar,
+  IonButton,
+  IonIcon,
+  IonCard,
+  IonCardContent,
+  IonCardHeader,
+  IonCardTitle,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonChip,
+  IonBadge,
+  IonSearchbar,
+  IonSegment,
+  IonSegmentButton,
+  IonRefresher,
+  IonRefresherContent,
+  IonInfiniteScroll,
+  IonInfiniteScrollContent,
+  IonDatetime,
+  IonDatetimeButton,
+  IonModal,
+  IonSpinner,
+  IonNote,
+  IonText,
+  IonItemSliding,
+  IonItemOptions,
+  IonItemOption,
+  RefresherEventDetail,
+  IonButtons,
+  IonSkeletonText,
+} from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import {
-  calendarOutline, filterOutline, searchOutline, navigateOutline,
-  timeOutline, carSportOutline, briefcaseOutline, medkitOutline,
-  heartOutline, homeOutline, chevronForwardOutline, trashOutline,
-  shareOutline, mapOutline, cashOutline, trendingUpOutline, gridOutline
+  calendarOutline,
+  filterOutline,
+  searchOutline,
+  navigateOutline,
+  timeOutline,
+  carSportOutline,
+  briefcaseOutline,
+  medkitOutline,
+  heartOutline,
+  homeOutline,
+  chevronForwardOutline,
+  trashOutline,
+  shareOutline,
+  mapOutline,
+  cashOutline,
+  trendingUpOutline,
+  gridOutline,
 } from 'ionicons/icons';
-import { format, subDays, startOfMonth, endOfMonth, parseISO, isWithinInterval } from 'date-fns';
+import {
+  format,
+  subDays,
+  startOfMonth,
+  endOfMonth,
+  parseISO,
+  isWithinInterval,
+} from 'date-fns';
 import { es } from 'date-fns/locale';
 import { firstValueFrom } from 'rxjs';
 
@@ -51,18 +105,45 @@ import { environment } from '../../../environments/environment';
   selector: 'app-history',
   standalone: true,
   imports: [
-    CommonModule, FormsModule,
-    IonContent, IonHeader, IonTitle, IonToolbar, IonButton, IonIcon,
-    IonCard, IonCardContent, IonItem, IonLabel,
-    IonList, IonChip, IonBadge, IonSearchbar, IonSegment, IonSegmentButton,
-    IonRefresher, IonRefresherContent, IonInfiniteScroll, IonInfiniteScrollContent,
-    IonDatetime, IonDatetimeButton, IonModal, IonNote,
-    IonItemSliding, IonItemOptions, IonItemOption, IonButtons, IonSkeletonText
+    CommonModule,
+    FormsModule,
+    IonContent,
+    IonHeader,
+    IonTitle,
+    IonToolbar,
+    IonButton,
+    IonIcon,
+    IonCard,
+    IonCardContent,
+    IonItem,
+    IonLabel,
+    IonList,
+    IonChip,
+    IonBadge,
+    IonSearchbar,
+    IonSegment,
+    IonSegmentButton,
+    IonRefresher,
+    IonRefresherContent,
+    IonInfiniteScroll,
+    IonInfiniteScrollContent,
+    IonDatetime,
+    IonDatetimeButton,
+    IonModal,
+    IonNote,
+    IonItemSliding,
+    IonItemOptions,
+    IonItemOption,
+    IonButtons,
+    IonSkeletonText,
   ],
   templateUrl: './history.page.html',
-  styleUrl: './history.page.scss'
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styleUrl: './history.page.scss',
 })
 export class HistoryPage implements OnInit {
+  private tripService = inject(TripService);
+  private router = inject(Router);
   // Estado de carga
   isLoading = signal(true);
 
@@ -91,15 +172,16 @@ export class HistoryPage implements OnInit {
     // Filtrar por búsqueda
     if (this.searchQuery.trim()) {
       const query = this.searchQuery.toLowerCase();
-      trips = trips.filter(trip =>
-        trip.purpose?.toLowerCase().includes(query) ||
-        this.formatDate(trip.startTime).toLowerCase().includes(query)
+      trips = trips.filter(
+        (trip) =>
+          trip.purpose?.toLowerCase().includes(query) ||
+          this.formatDate(trip.startTime).toLowerCase().includes(query)
       );
     }
 
     // Filtrar por propósito
     if (this.selectedPurpose !== 'all') {
-      trips = trips.filter(trip => trip.purpose === this.selectedPurpose);
+      trips = trips.filter((trip) => trip.purpose === this.selectedPurpose);
     }
 
     // Filtrar por fecha
@@ -108,7 +190,7 @@ export class HistoryPage implements OnInit {
       const end = new Date(this.endDate);
       end.setHours(23, 59, 59, 999);
 
-      trips = trips.filter(trip => {
+      trips = trips.filter((trip) => {
         const tripDate = new Date(trip.startTime);
         return tripDate >= start && tripDate <= end;
       });
@@ -119,23 +201,38 @@ export class HistoryPage implements OnInit {
 
   // Computed: total de millas
   totalMiles = computed(() => {
-    return this.filteredTrips().reduce((sum, trip) => sum + (trip.distanceMiles || 0), 0);
+    return this.filteredTrips().reduce(
+      (sum, trip) => sum + (trip.distanceMiles || 0),
+      0
+    );
   });
 
   // Computed: deducción total
   totalDeduction = computed(() => {
-    return this.totalMiles() * environment.app.mileageRate;
+    const trips=this.filteredTrips().filter(t=>t.status==='Completed');
+    if(trips.some(t=>t.estimatedAmount==null || t.currency!==environment.app.currency)) return null;
+    return trips.reduce((n,t)=>n+(t.estimatedAmount ?? 0),0);
   });
 
-  constructor(
-    private tripService: TripService,
-    private router: Router
-  ) {
+  constructor() {
     addIcons({
-      calendarOutline, filterOutline, searchOutline, navigateOutline,
-      timeOutline, carSportOutline, briefcaseOutline, medkitOutline,
-      heartOutline, homeOutline, chevronForwardOutline, trashOutline,
-      shareOutline, mapOutline, cashOutline, trendingUpOutline, gridOutline
+      calendarOutline,
+      filterOutline,
+      searchOutline,
+      navigateOutline,
+      timeOutline,
+      carSportOutline,
+      briefcaseOutline,
+      medkitOutline,
+      heartOutline,
+      homeOutline,
+      chevronForwardOutline,
+      trashOutline,
+      shareOutline,
+      mapOutline,
+      cashOutline,
+      trendingUpOutline,
+      gridOutline,
     });
 
     // Inicializar fechas
@@ -155,8 +252,11 @@ export class HistoryPage implements OnInit {
   /**
    * Cargar viajes desde el servicio
    */
+  async ionViewWillEnter() {await this.loadTrips();}
+
   async loadTrips() {
     this.isLoading.set(true);
+    this.allTrips.set([]);
 
     try {
       const trips = await firstValueFrom(this.tripService.getTrips());
@@ -173,7 +273,7 @@ export class HistoryPage implements OnInit {
    * Toggle panel de filtros
    */
   toggleFilters() {
-    this.showFilters.update(v => !v);
+    this.showFilters.update((v) => !v);
   }
 
   /**
@@ -279,8 +379,10 @@ export class HistoryPage implements OnInit {
    * Eliminar viaje
    */
   async deleteTrip(trip: Trip) {
-    console.log('Eliminando viaje:', trip.id);
-    // Implementar eliminación
+    if(trip.syncState==='pending') {window.alert('Espera a que el recorrido se sincronice.');return;}
+    if(!window.confirm('¿Eliminar este recorrido?')) return;
+    try {await firstValueFrom(this.tripService.deleteTrip(trip.id));this.allTrips.update(rows=>rows.filter(t=>t.id!==trip.id));}
+    catch {window.alert('No se pudo eliminar. Comprueba la conexion y que el recorrido este finalizado.');}
   }
 
   /**
@@ -308,8 +410,8 @@ export class HistoryPage implements OnInit {
     return `${minutes} min`;
   }
 
-  calculateTripDeduction(miles: number): string {
-    return (miles * environment.app.mileageRate).toFixed(2);
+  calculateTripDeduction(trip: Trip): string {
+    return trip.estimatedAmount == null ? 'Sin tarifa' : `${trip.estimatedAmount.toFixed(2)} ${trip.currency ?? ''}`;
   }
 
   getPurposeIcon(purpose: TripPurpose): string {
@@ -317,7 +419,8 @@ export class HistoryPage implements OnInit {
       business: 'briefcase-outline',
       medical: 'medkit-outline',
       moving: 'home-outline',
-      personal: 'car-sport-outline'
+      personal: 'car-sport-outline',
+      charity: 'heart-outline',
     };
     return icons[purpose] || 'car-sport-outline';
   }
@@ -327,27 +430,28 @@ export class HistoryPage implements OnInit {
       business: 'Negocios',
       medical: 'Médico',
       moving: 'Mudanza',
-      personal: 'Personal'
+      personal: 'Personal',
+      charity: 'Beneficencia',
     };
     return labels[purpose] || 'Personal';
   }
 
   getStatusColor(status: TripStatus): string {
     const colors: Record<TripStatus, string> = {
-      'InProgress': 'warning',
-      'Completed': 'success',
-      'Cancelled': 'danger',
-      'Paused': 'medium'
+      InProgress: 'warning',
+      Completed: 'success',
+      Cancelled: 'danger',
+      Paused: 'medium',
     };
     return colors[status] || 'medium';
   }
 
   getStatusLabel(status: TripStatus): string {
     const labels: Record<TripStatus, string> = {
-      'InProgress': 'En Progreso',
-      'Completed': 'Completado',
-      'Cancelled': 'Cancelado',
-      'Paused': 'Pausado'
+      InProgress: 'En Progreso',
+      Completed: 'Completado',
+      Cancelled: 'Cancelado',
+      Paused: 'Pausado',
     };
     return labels[status] || 'Desconocido';
   }

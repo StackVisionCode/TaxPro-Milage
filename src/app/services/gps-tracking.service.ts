@@ -5,7 +5,7 @@
  */
 
 import { Injectable, inject, NgZone } from '@angular/core';
-import { BehaviorSubject, Observable, Subject, interval, Subscription } from 'rxjs';
+import { BehaviorSubject, Observable, Subject, interval, Subscription, firstValueFrom } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { Geolocation, Position } from '@capacitor/geolocation';
 import { Preferences } from '@capacitor/preferences';
@@ -21,6 +21,8 @@ import {
 } from '../models/interfaces';
 import { TripService } from './trip.service';
 import { TrackingApiService } from './tracking-api.service';
+import { MobileTripSyncService } from './mobile-trip-sync.service';
+import { CustomerTokenService } from './customer-token.service';
 
 // Configuración por defecto (usada si no está en environment)
 const DEFAULT_GPS_CONFIG = {
@@ -42,6 +44,8 @@ export class GpsTrackingService {
   private tripService = inject(TripService);
   private trackingApiService = inject(TrackingApiService);
   private ngZone = inject(NgZone);
+  private sync = inject(MobileTripSyncService);
+  private tokens = inject(CustomerTokenService);
 
   // Configuración combinada (environment + defaults)
   private readonly config = {
@@ -108,8 +112,16 @@ export class GpsTrackingService {
 
   savedTrip = {} as Trip;
 
+  private accountScope: string|null = null;
   constructor() {
-    this.restoreTrackingState();
+    this.tokens.token$.subscribe(token=> {
+      const next=token ? this.sync.scope() : null;
+      if(this.accountScope!==next) {
+        void this.stopPositionWatcher();void this.stopDrivingDetection();this.stopTimer();this.stopApiSync();this.resetTrackingState();
+        this.accountScope=next;
+        if(next) void this.restoreTrackingState();
+      }
+    });
     this.loadAutoStopSetting();
   }
 
@@ -259,8 +271,9 @@ export class GpsTrackingService {
    * Inicia el tracking de un nuevo recorrido
    */
   async startTracking(purpose: TripPurpose = 'business'): Promise<void> {
+    const scope=this.sync.scope();
     try {
-      await this.checkAndRequestPermissions();
+      if(!await this.checkAndRequestPermissions()) throw new Error('Se necesita permiso de ubicacion.');
       await this.stopDrivingDetection();
 
       const initialPosition = await this.getCurrentPosition();
@@ -291,14 +304,21 @@ export class GpsTrackingService {
         isPaused: false,
         routePoints: [startPoint],
         currentPosition: startPoint,
-        startTime: Date.now(),
+        startTime: startPoint.timestamp,
         elapsedTime: 0,
         currentDistance: 0,
         currentSpeed: (initialPosition.coords.speed || 0) * 2.237,
         lastUpdate: Date.now()
       };
 
+      const vehicle = await firstValueFrom(this.trackingApiService.getProfileVehicle());
+      if(!vehicle?.id) throw new Error('Registra un vehiculo antes de iniciar el recorrido.');
+      if(this.sync.scope()!==scope) throw new Error('La cuenta cambio durante el inicio.');
+      newState.vehicleId = vehicle.id;
+      await this.sync.record(newState);
+      if(this.sync.scope()!==scope) return;
       this.trackingStateSubject.next(newState);
+      await this.saveTrackingState();
       this.lastMovementTime = Date.now();
       this.stoppedSince = 0;
       this.isTemporarilyStopped = false;
@@ -319,17 +339,18 @@ export class GpsTrackingService {
   /**
    * Pausa el tracking actual (manual)
    */
-  pauseTracking(): void {
+  async pauseTracking(): Promise<void> {
+    const scope=this.sync.scope();
     const currentState = this.trackingStateSubject.value;
 
     if (!currentState.isTracking || currentState.isPaused) {
       return;
     }
 
-    this.trackingStateSubject.next({
-      ...currentState,
-      isPaused: true
-    });
+    await this.sync.record(structuredClone(currentState),'pause');
+    if(this.sync.scope()!==scope) return;
+    this.trackingStateSubject.next({...currentState,isPaused:true});
+    await this.saveTrackingState();
 
     this.stopPositionWatcher();
     this.stopTimer();
@@ -341,16 +362,17 @@ export class GpsTrackingService {
    * Reanuda el tracking pausado
    */
   async resumeTracking(): Promise<void> {
+    const scope=this.sync.scope();
     const currentState = this.trackingStateSubject.value;
 
     if (!currentState.isTracking || !currentState.isPaused) {
       return;
     }
 
-    this.trackingStateSubject.next({
-      ...currentState,
-      isPaused: false
-    });
+    await this.sync.record(structuredClone(currentState),'resume');
+    if(this.sync.scope()!==scope) return;
+    this.trackingStateSubject.next({...currentState,isPaused:false});
+    await this.saveTrackingState();
 
     await this.startPositionWatcher();
     this.startTimer();
@@ -365,6 +387,7 @@ export class GpsTrackingService {
    * Detiene el tracking y finaliza el recorrido
    */
   async stopTracking(autoStopped: boolean = false): Promise<Trip | null> {
+    const scope=this.sync.scope();
     const currentState = this.trackingStateSubject.value;
 
     if (!currentState.isTracking) {
@@ -396,29 +419,12 @@ export class GpsTrackingService {
         endPoint = currentState.routePoints[currentState.routePoints.length - 1];
       }
 
-      const tripData: FinishTripData = {
-        tripId: currentState.tripId || this.generateTripId(),
-        purpose: currentState.purpose || 'business',
-        endLocation: endPoint,
-        route: currentState.routePoints,
-        distanceMiles: currentState.currentDistance,
-        distanceKm: this.milesToKm(currentState.currentDistance),
-        durationSeconds: currentState.elapsedTime,
-        averageSpeedMph: this.calculateAverageSpeed(currentState.currentDistance, currentState.elapsedTime),
-        maxSpeedMph: this.calculateMaxSpeed(currentState.routePoints)
-      };
-
-      this.tripService.finishTrip(tripData).subscribe({
-        next: (trip) => {
-          if (!trip) {
-            return this.savedTrip;
-          }
-          return this.savedTrip = trip;
-        },
-        error: (err) => {
-          console.error('Error guardando viaje:', err);
-        }
-      });
+      if(this.sync.scope()!==scope) return null;
+      const finalState = structuredClone(currentState);
+      if(!currentState.isPaused && endPoint.timestamp > (finalState.routePoints[finalState.routePoints.length-1]?.timestamp ?? 0))
+        finalState.routePoints.push(endPoint);
+      const savedTrip = await this.tripService.finishTracking(finalState);
+      this.savedTrip = savedTrip;
 
       this.resetTrackingState();
       await this.clearSavedTrackingState();
@@ -428,14 +434,13 @@ export class GpsTrackingService {
       }
 
       // Solo log al finalizar con resumen
-      console.log(`✅ Tracking finalizado: ${tripData.distanceMiles.toFixed(2)} mi, ${currentState.routePoints.length} puntos`);
+      console.log(`✅ Tracking finalizado: ${currentState.currentDistance.toFixed(2)} mi, ${currentState.routePoints.length} puntos`);
 
       return this.savedTrip || null;
 
     } catch (error) {
       console.error('❌ Error finalizando tracking:', error);
-      await this.saveTrackingForLaterSync(currentState);
-      this.resetTrackingState();
+      await this.saveTrackingState();
       throw error;
     }
   }
@@ -444,6 +449,8 @@ export class GpsTrackingService {
    * Cancela el tracking sin guardar
    */
   async cancelTracking(): Promise<void> {
+    const state = this.trackingStateSubject.value;
+    if(state.isTracking) await this.sync.record(structuredClone(state),'cancel');
     this.stopPositionWatcher();
     this.stopTimer();
     this.stopApiSync();
@@ -840,28 +847,31 @@ export class GpsTrackingService {
     const state = this.trackingStateSubject.value;
 
     await Preferences.set({
-      key: environment.storage.tempTrackingKey,
+      key: this.sync.trackingKey(),
       value: JSON.stringify(state)
     });
   }
 
   private async restoreTrackingState(): Promise<void> {
     try {
+      const scope=this.sync.scope();
       const { value } = await Preferences.get({
-        key: environment.storage.tempTrackingKey
+        key: this.sync.trackingKey()
       });
 
+      if(this.sync.scope()!==scope) return;
       if (value) {
         const savedState: TrackingState = JSON.parse(value);
+        if(savedState.tripId && ['Completed','Cancelled'].includes(await this.sync.plannedStatus(savedState.tripId) ?? '')) {
+          await this.clearSavedTrackingState(); return;
+        }
 
         if (savedState.isTracking) {
           console.log('🔄 Restaurando tracking en progreso...');
 
-          if (savedState.startTime) {
-            const elapsedSinceLastUpdate = Math.floor((Date.now() - (savedState.lastUpdate || savedState.startTime)) / 1000);
-            savedState.elapsedTime += elapsedSinceLastUpdate;
-          }
-
+          if(this.sync.scope()!==scope) return;
+          if(!savedState.isPaused) await this.sync.record(savedState,'pause');
+          if(this.sync.scope()!==scope) return;
           savedState.isPaused = true;
           this.trackingStateSubject.next(savedState);
         }
@@ -873,21 +883,20 @@ export class GpsTrackingService {
 
   private async clearSavedTrackingState(): Promise<void> {
     await Preferences.remove({
-      key: environment.storage.tempTrackingKey
+      key: this.sync.trackingKey()
     });
   }
 
-  private async saveTrackingForLaterSync(state: TrackingState): Promise<void> {
-    try {
-      const pendingKey = `pending_trip_${Date.now()}`;
-      await Preferences.set({
-        key: pendingKey,
-        value: JSON.stringify(state)
-      });
-      console.log('💾 Tracking guardado para sincronización posterior');
-    } catch (error) {
-      console.error('❌ Error guardando tracking pendiente:', error);
+  async suspendForLogout(): Promise<void> {
+    const state=this.trackingStateSubject.value;
+    if(state.isTracking && !state.isPaused) await this.sync.record(structuredClone(state),'pause');
+    if(state.isTracking) {
+      this.trackingStateSubject.next({...state,isPaused:true});
+      await this.saveTrackingState();
     }
+    await this.stopPositionWatcher();
+    await this.stopDrivingDetection();
+    this.stopTimer();this.stopApiSync();this.clearAutoStopTimeout();this.resetTrackingState();
   }
 
   private resetTrackingState(): void {

@@ -16,13 +16,11 @@ import {
   ViewChild,
   ElementRef,
   AfterViewInit,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule, CurrencyPipe, DecimalPipe } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import {
-  IonHeader,
-  IonToolbar,
-  IonTitle,
   IonContent,
   IonRefresher,
   IonRefresherContent,
@@ -37,7 +35,7 @@ import {
   IonButton,
   IonSkeletonText,
   IonChip,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import {
   carOutline,
@@ -82,9 +80,6 @@ Chart.register(...registerables);
     RouterLink,
     CurrencyPipe,
     DecimalPipe,
-    IonHeader,
-    IonToolbar,
-    IonTitle,
     IonContent,
     IonRefresher,
     IonRefresherContent,
@@ -97,6 +92,7 @@ Chart.register(...registerables);
     IonChip,
   ],
   templateUrl: './dashboard.page.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './dashboard.page.scss',
 })
 export class DashboardPage implements OnInit, OnDestroy {
@@ -112,7 +108,7 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   private subscriptions: Subscription[] = [];
   private chart: Chart | null = null;
-  monthlyDeduction: number = 0;
+  monthlyDeduction: number | null = null;
   user: ICustomerProfile | null = null;
   statistics: UserStatistics | null = null;
   recentTrips: Trip[] = [];
@@ -307,6 +303,7 @@ export class DashboardPage implements OnInit, OnDestroy {
 
       // Obtener recorridos recientes del cache (ya poblado)
       this.recentTrips = this.tripService.getRecentTrips();
+      this.monthlyDeduction = await this.getMonthlyDeduction();
 
       // Actualizar gráfico si existe
       if (this.chart) {
@@ -449,20 +446,8 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.monthlyDeduction = await this.getMonthlyDeduction();
   }
 
-  async getMonthlyDeduction(): Promise<number> {
-    const valor = await this.tripService.getStatisticsFromCache();
-    console.log('Valor de estadísticas desde cache:==============>', valor);
-    const miles = valor.milesThisMonth || 0;
-    const { value } = await Preferences.get({ key: 'irsConfiguration' });
-
-    const irsConfiguration: IIRSConfiguration = value
-      ? JSON.parse(value)
-      : null;
-    if (!irsConfiguration) {
-      return 0;
-    }
-    console.log('==========>', miles * Number(irsConfiguration.mileageRate));
-    return miles * Number(irsConfiguration.mileageRate);
+  async getMonthlyDeduction(): Promise<number|null> {
+    try { return await this.tripService.monthlyEstimate(); } catch { return null; }
   }
 
   formatDate(dateStr: string): string {

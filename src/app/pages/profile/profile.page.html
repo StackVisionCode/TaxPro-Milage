@@ -185,7 +185,7 @@
             <ion-list lines="none">
                 <ion-item>
                     <ion-label>Tarifa IRS por Milla</ion-label>
-                    <ion-note slot="end">\${{ mileageRate }}/milla</ion-note>
+                    <ion-note slot="end">{{ mileageRate == null ? 'Sin tarifa configurada' : mileageRate + ' ' + mileageCurrency + '/milla' }}</ion-note>
                 </ion-item>
                 <ion-item>
                     <ion-label>Versión de la App</ion-label>

@@ -1,28 +1,37 @@
+import { isPendingTrackingStorageKey } from './tracking-storage-keys';
 import { HttpClient } from '@angular/common/http';
-import { inject, Injectable } from '@angular/core';
+import { inject, Injectable, OnDestroy } from '@angular/core';
 import {
   BehaviorSubject,
+  defer,
   catchError,
-  forkJoin,
+  from,
   map,
   Observable,
   of,
   Subject,
+  switchMap,
   tap,
   throwError,
 } from 'rxjs';
 
 import { Router } from '@angular/router';
-import { ICustomerLogin, ICustomerLoginResponse, ICustomerProfile, ICustomerSelectCompanyRequest } from '../models/customer-login.interface';
+import {
+  ICustomerLogin,
+  ICustomerLoginResponse,
+  ICustomerProfile,
+  ICustomerTenantLoginRequest,
+  IMeResponse,
+  IMyCustomerAvatarUploadResponse,
+  IMyCustomerContactResponse,
+  ITakeoverResponse,
+} from '../models/customer-login.interface';
 import { CustomerTokenService } from './customer-token.service';
 import { environment } from '../../environments/environment';
-import { IApiResponse } from '../models/IApiResponse';
-import { ICustomerForceLogoutRequest, ICustomerForceLogoutResponse } from '../models/customer-force-logout.interface';
 import { NativeBiometric, BiometryType } from '@capgo/capacitor-native-biometric';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { TripService } from './trip.service';
-import { TrackingApiService } from './tracking-api.service';
 import { GpsTrackingService } from './gps-tracking.service';
 
 export { BiometryType } from '@capgo/capacitor-native-biometric';
@@ -30,7 +39,7 @@ export { BiometryType } from '@capgo/capacitor-native-biometric';
 @Injectable({
   providedIn: 'root',
 })
-export class CustomerAuthService {
+export class CustomerAuthService implements OnDestroy {
   private http = inject(HttpClient);
   private customerTokenService = inject(CustomerTokenService);
   // private cloudTokenService = inject(CloudTokenService);
@@ -46,8 +55,6 @@ export class CustomerAuthService {
   currentCustomer$ = this.currentCustomerSubject.asObservable();
 
   private destroy$ = new Subject<void>();
-  private isHandlingForceLogout = false;
-
   private assignmentChangedSubject = new Subject<{
     taxUserId: string;
     isAssigned: boolean;
@@ -71,79 +78,60 @@ export class CustomerAuthService {
   }
 
 
-  /**
-   * Login inicial que puede requerir selección de company
-   */
-  login(data: ICustomerLogin): Observable<IApiResponse<ICustomerLoginResponse>> {
+  login(data: ICustomerLogin): Observable<ICustomerLoginResponse> {
     return this.http
-      .post<IApiResponse<ICustomerLoginResponse>>(
-        `${environment.apiUrl}/auth/client/login`,
+      .post<ICustomerLoginResponse>(
+        `${environment.apiUrl}${environment.endpoints.login}`,
         data
       )
+      .pipe(switchMap((response) => this.processLoginResponse(response)));
+  }
+
+  loginWithTenant(
+    data: ICustomerTenantLoginRequest
+  ): Observable<ICustomerLoginResponse> {
+    return this.http
+      .post<ICustomerLoginResponse>(
+        `${environment.apiUrl}${environment.endpoints.login}`,
+        data
+      )
+      .pipe(switchMap((response) => this.processLoginResponse(response)));
+  }
+
+  takeoverSession(ticket: string): Observable<boolean> {
+    return this.http
+      .post<ITakeoverResponse>(
+        `${environment.apiUrl}${environment.endpoints.takeoverSession}`,
+        { ticket }
+      )
       .pipe(
-        map((res) => {
-          if (res.success && res.data) {
-            // Verificar si requiere selección de company
-            if (res.data.requiresCompanySelection && res.data.availableCompanies) {
-              // No procesar tokens aún, devolver para mostrar selector
-              return res;
-            }
-
-            // Login directo (una sola company)
-            const { tokenRequest, tokenRefresh, customerProfile } = res.data;
-
-            if (tokenRequest && tokenRefresh) {
-              this.customerTokenService.setTokens(tokenRequest, tokenRefresh);
-
-              if (customerProfile) {
-                this.currentCustomerSubject.next(customerProfile);
-              } else {
-                this.loadCustomerProfile().subscribe({
-                  error: (err) => console.error('Error loading customer profile:', err)
-                });
-              }
-            }
-
-            return res;
+        switchMap((response) => {
+          const tokens = response.tokens;
+          if (!tokens?.accessToken || !tokens.refreshToken) {
+            return throwError(() => new Error('No se recibieron tokens de sesión.'));
           }
-          throw new Error(res.message || 'Login failed');
-        }),
-        catchError((err) => throwError(() => err))
+
+          this.customerTokenService.setTokens(
+            tokens.accessToken,
+            tokens.refreshToken
+          );
+          return this.loadCustomerProfile().pipe(map(() => true));
+        })
       );
   }
 
-  /**
-   * Completar login con company seleccionada
-   */
-  loginWithCompany(data: ICustomerSelectCompanyRequest): Observable<IApiResponse<ICustomerLoginResponse>> {
-    return this.http
-      .post<IApiResponse<ICustomerLoginResponse>>(
-        `${environment.apiUrl}/auth/client/login/select-company`,
-        data
-      )
-      .pipe(
-        map((res) => {
-          if (res.success && res.data) {
-            const { tokenRequest, tokenRefresh, customerProfile } = res.data;
+  private processLoginResponse(
+    response: ICustomerLoginResponse
+  ): Observable<ICustomerLoginResponse> {
+    if (!response.accessToken || !response.refreshToken) {
+      return of(response);
+    }
 
-            if (tokenRequest && tokenRefresh) {
-              this.customerTokenService.setTokens(tokenRequest, tokenRefresh);
-
-              if (customerProfile) {
-                this.currentCustomerSubject.next(customerProfile);
-              } else {
-                this.loadCustomerProfile().subscribe({
-                  error: (err) => console.error('Error loading customer profile:', err)
-                });
-              }
-            }
-
-            return res;
-          }
-          throw new Error(res.message || 'Login failed');
-        }),
-        catchError((err) => throwError(() => err))
-      );
+    this.customerTokenService.setTokens(
+      response.accessToken,
+      response.refreshToken
+    );
+    return this.loadCustomerProfile().pipe(map(() => response));
   }
 
   loadCustomerProfile(): Observable<ICustomerProfile | null> {
@@ -152,17 +140,32 @@ export class CustomerAuthService {
     }
 
     return this.http
-      .get<IApiResponse<ICustomerProfile>>(
-        `${environment.apiUrl}/auth/client/profile`
-      )
+      .get<IMeResponse>(`${environment.apiUrl}${environment.endpoints.userProfile}`)
       .pipe(
         map((response) => {
-          if (response.success && response.data) {
-            const customer = response.data;
-            this.currentCustomerSubject.next(customer);
-            return customer;
+          if (
+            response.actorType !== 'CustomerPortal' ||
+            !response.customerId
+          ) {
+            throw new Error('La sesión no pertenece a un cliente de oficina.');
           }
-          return null;
+
+          const customer: ICustomerProfile = {
+            customerId: response.customerId,
+            userId: response.id,
+            firstName: response.name,
+            lastName: response.lastName,
+            email: response.email,
+            phoneNumber: response.phoneNumber ?? '',
+            companyId: response.tenant.id,
+            actorType: response.actorType,
+            tenant: response.tenant,
+            roles: response.roles,
+            permissions: response.permissions,
+            timeZoneId: response.timeZoneId,
+          };
+          this.currentCustomerSubject.next(customer);
+          return customer;
         }),
         catchError((error) => {
           return throwError(() => error);
@@ -170,26 +173,43 @@ export class CustomerAuthService {
       );
   }
 
-  logout(): Observable<boolean> {
-    this.clearInMemoryState();
-
-    this.clearClientStorage();
-
-    return this.http.post<boolean>(`${environment.apiUrl}/auth/client/logout`, {}).pipe(
-      catchError(error => {
-        console.warn('⚠️ Error al notificar logout al servidor (continuando con logout local):', error);
-        return of(true);
-      }),
-      tap(() => {
-        this.router.navigate(['/login']);
-      })
+  getMyCustomerContact(): Observable<IMyCustomerContactResponse> {
+    return this.http.get<IMyCustomerContactResponse>(
+      `${environment.apiUrl}${environment.endpoints.myCustomerContact}`
     );
+  }
+
+  uploadMyCustomerAvatar(file: File): Observable<IMyCustomerAvatarUploadResponse> {
+    const form = new FormData();
+    form.append('file', file, file.name || 'avatar.jpg');
+    return this.http.put<IMyCustomerAvatarUploadResponse>(
+      `${environment.apiUrl}${environment.endpoints.myCustomerAvatar}`,
+      form
+    );
+  }
+
+  logout(): Observable<boolean> {
+    return defer(()=>this.trackingService.suspendForLogout()).pipe(
+      switchMap(()=>this.http.post<void>(`${environment.apiUrl}${environment.endpoints.logout}`, {}).pipe(
+        catchError(error => {
+          console.warn('Error al notificar logout al servidor; se cierra la sesion local:',error);
+          return of(undefined);
+        })
+      )),
+      switchMap(() => {
+        this.clearInMemoryState();
+        return from(this.clearClientStorage());
+      }),
+      tap(() => this.router.navigate(['/login'])),
+      map(() => true)
+      );
   }
 
   /**
  * Limpiar estado en memoria ANTES de limpiar storage
  */
   private clearInMemoryState(): void {
+    this.customerTokenService.removeTokens();
     this.currentCustomerSubject.next(null);
 
     // Limpiar cache de trips si existe
@@ -197,19 +217,19 @@ export class CustomerAuthService {
       this.tripService.clearCache();
     }
 
-    // Detener tracking si está activo
-    if (this.trackingService) {
-      this.trackingService.stopTracking();
-    }
+
   }
 
   private async clearClientStorage(): Promise<void> {
     try {
       // 1) Capacitor Preferences - limpiar todo
-      await Preferences.clear();
+      const {keys}=await Preferences.keys();
+      await Promise.all(keys.filter(key=>!isPendingTrackingStorageKey(key)).map(key=>Preferences.remove({key})));
 
-      // 2) Web storage - limpiar todo
-      localStorage.clear();
+      // Preferences shares localStorage on web: retain pending trips in both passes.
+      for(const key of Object.keys(localStorage)) {
+        if(!isPendingTrackingStorageKey(key)) localStorage.removeItem(key);
+      }
       sessionStorage.clear();
 
       // 3) IndexedDB - limpiar bases de datos (si usas)
@@ -291,26 +311,6 @@ export class CustomerAuthService {
   //   });
   // }
 
-
-  forceLogout(request: ICustomerForceLogoutRequest): Observable<IApiResponse<ICustomerForceLogoutResponse>> {
-    return this.http
-      .post<IApiResponse<ICustomerForceLogoutResponse>>(
-        `${environment.apiUrl}/auth/client/force-logout`,
-        request
-      )
-      .pipe(
-        tap((response) => {
-          if (response.success && response.data) {
-            const count = response.data.revokedSessionsCount;
-            console.log(`Force logout successful. Revoked sessions: ${count}`);
-          }
-        }),
-        catchError((error) => {
-          console.error('Force logout error:', error);
-          return throwError(() => error);
-        })
-      );
-  }
 
   hasValidSession(): boolean {
     const token = this.customerTokenService.token;
@@ -539,15 +539,18 @@ export class CustomerAuthService {
    */
   private async refreshTokens(refreshToken: string): Promise<{ accessToken: string; refreshToken: string } | null> {
     try {
-      const response = await this.http.post<IApiResponse<{ tokenRequest: string; tokenRefresh: string }>>(
-        `${environment.apiUrl}/auth/client/refresh`,
+      const response = await this.http.post<{
+        accessToken: string;
+        refreshToken: string;
+      }>(
+        `${environment.apiUrl}${environment.endpoints.refreshToken}`,
         { refreshToken }
       ).toPromise();
 
-      if (response?.success && response.data) {
+      if (response?.accessToken && response.refreshToken) {
         return {
-          accessToken: response.data.tokenRequest,
-          refreshToken: response.data.tokenRefresh
+          accessToken: response.accessToken,
+          refreshToken: response.refreshToken
         };
       }
       return null;

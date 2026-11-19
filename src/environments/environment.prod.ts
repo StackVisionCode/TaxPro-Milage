@@ -12,36 +12,40 @@ export const environment = {
   // CONFIGURACIÓN DE API - PRODUCCIÓN
   // ===========================================
 
-  apiUrl: 'https://devapi.taxprosuite.com/api',
+  apiUrl: 'https://api.taxoffix.io',
 
   endpoints: {
-    login: '/auth/client/login',
-    logout: '/auth/client/logout',
-    miltilogin: '/auth/client/login/select-company',
-    //refreshToken: '/auth/refresh',
-    userProfile: '/auth/client/profile',
-    trips: '/client/tracking/getTrips',
-    tripById: '/client/tracking/getTripById',
-    tripsByDateRange: '/trips/range',
-    tripStatistics: '/client/tracking/getUserStatistics',
-    mileageLog: '/client/tracking/create',
-    mileageSummary: '/client/tracking/getMilesLastSevenDays',
-    profileVehicle: '/client/tracking/createVehicle',
-    getProfileVehicle: '/client/tracking/getVehicle',
-    irsConfiguration: '/client/tracking/getIRSMovilConfiguration',
+    login: '/auth/mobile/login',
+    logout: '/auth/logout',
+    refreshToken: '/auth/mobile/refresh',
+    takeoverSession: '/auth/session/takeover',
+    userProfile: '/auth/me',
+    myCustomerContact: '/customers/me/contact',
+    myCustomerAvatar: '/customers/me/avatar',
+    trips: '/mobile/trips',
+    tripById: '/mobile/trips',
+    tripsByDateRange: '/mobile/trips',
+    tripStatistics: '/mobile/statistics',
+    mileageLog: '/mobile/trips',
+    mileageSummary: '/mobile/statistics/daily',
+    profileVehicle: '/mobile/vehicles',
+    getProfileVehicle: '/mobile/vehicles',
+    irsConfiguration: '/mobile/mileage-configuration',
   },
 
   // ===========================================
-  // CONFIGURACIÓN DE GOOGLE MAPS - PRODUCCIÓN
+  // CONFIGURACIÓN DE MAPBOX - PRODUCCIÓN
   // ===========================================
 
-  googleMapsApiKey: 'AIzaSyCEGf9zWOtFVJUtV8BpZj06vvJbitxBOiU',
+  mapbox: {
+    accessToken: 'pk.eyJ1IjoianR1cmJpIiwiYSI6ImNsc2xiaHR4azA3aDkycnMxY2U1NWhuam4ifQ.O95shIYcW1_x7APsLeatVw',
+    style: 'mapbox://styles/mapbox/streets-v12',
+  },
 
   mapDefaults: {
     lat: 39.8283,
     lng: -98.5795,
     zoom: 4,
-    mapTypeId: 'roadmap',
   },
 
   // ===========================================

@@ -129,7 +129,7 @@
         <div class="summary-item">
             <ion-icon name="cash-outline" color="success"></ion-icon>
             <div class="summary-info">
-                <span class="summary-value">\${{ totalDeduction().toFixed(2) }}</span>
+                <span class="summary-value">{{ totalDeduction() == null ? 'Sin estimacion' : ('$' + totalDeduction()?.toFixed(2)) }}</span>
                 <span class="summary-label">Deducción</span>
             </div>
         </div>
@@ -200,7 +200,7 @@
                         </span>
                         <span class="stat deduction">
                             <ion-icon name="cash-outline"></ion-icon>
-                            \${{ calculateTripDeduction(trip.distanceMiles || 0) }}
+                            {{ calculateTripDeduction(trip) }}
                         </span>
                     </div>
 

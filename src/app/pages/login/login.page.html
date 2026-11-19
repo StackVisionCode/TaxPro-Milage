@@ -17,8 +17,8 @@
                     <ion-icon name="arrow-back-outline"></ion-icon>
                 </div>
                 <div>
-                    <p class="company-title">Selecciona tu compañía</p>
-                    <p class="company-subtitle">Elige la compañía con la que deseas iniciar sesión</p>
+                    <p class="company-title">Selecciona tu oficina</p>
+                    <p class="company-subtitle">Elige la oficina con la que deseas iniciar sesión</p>
                 </div>
             </div>
 
@@ -32,31 +32,25 @@
 
             <!-- Lista de compañías -->
             <div class="company-list">
-                @for (company of availableCompanies; track company.companyId) {
-                <div class="company-card" (click)="selectCompany(company)" [class.disabled]="isLoading">
+                @for (office of availableOffices; track office.tenantId) {
+                <div class="company-card" (click)="selectOffice(office)" [class.disabled]="isLoading">
 
                     <!-- Logo o placeholder -->
                     <div class="company-logo-wrapper">
-                        @if (company.companyLogo) {
-                        <img [src]="company.companyLogo" [alt]="company.companyName" class="company-logo" />
-                        } @else {
                         <div class="company-logo-placeholder">
-                            <span>{{ getCompanyInitials(company.companyName) }}</span>
+                            <span>{{ getCompanyInitials(office.name) }}</span>
                         </div>
-                        }
                     </div>
 
                     <!-- Info -->
                     <div class="company-info">
-                        <p class="company-name">{{ company.companyName }}</p>
-                        @if (company.companyCity || company.companyState) {
+                        <p class="company-name">{{ office.name }}</p>
                         <p class="company-location">
                             <ion-icon name="location-outline"></ion-icon>
-                            {{ company.companyCity }}@if (company.companyCity && company.companyState) {, }{{ company.companyState }}
+                            {{ office.subdomain }}
                         </p>
-                        }
-                        @if (company.displayName) {
-                        <p class="company-user">{{ company.displayName }}</p>
+                        @if (office.mfaRequired) {
+                        <p class="company-user">Requiere código de autenticación</p>
                         }
                     </div>
 

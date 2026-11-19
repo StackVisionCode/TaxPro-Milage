@@ -9,14 +9,14 @@
  * - Perfil: Configuración del usuario
  */
 
-import { Component } from '@angular/core';
+import { Component, ChangeDetectionStrategy } from '@angular/core';
 import {
   IonTabs,
   IonTabBar,
   IonTabButton,
   IonIcon,
   IonLabel,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import {
   homeOutline,
@@ -29,23 +29,18 @@ import {
   person,
   settingsOutline,
   settings,
-  settingsSharp
+  settingsSharp,
 } from 'ionicons/icons';
 
 @Component({
   selector: 'app-tabs',
   standalone: true,
-  imports: [
-    IonTabs,
-    IonTabBar,
-    IonTabButton,
-    IonIcon,
-  ],
+  imports: [IonTabs, IonTabBar, IonTabButton, IonIcon],
   templateUrl: './tabs.page.html',
-  styleUrl: './tabs.page.scss'
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styleUrl: './tabs.page.scss',
 })
 export class TabsPage {
-
   constructor() {
     // Registrar iconos
     addIcons({
@@ -59,7 +54,7 @@ export class TabsPage {
       person,
       settingsOutline,
       settings,
-      settingsSharp
+      settingsSharp,
     });
   }
 }

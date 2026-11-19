@@ -1,16 +1,20 @@
+import { toSignal } from '@angular/core/rxjs-interop';
+import { MobileTripSyncService } from '../../services/mobile-trip-sync.service';
+import { firstValueFrom } from 'rxjs';
+import { TripService } from '../../services/trip.service';
 /**
  * ============================================================
  * TRACKING PAGE - Página Principal de Seguimiento GPS
  * ============================================================
  *
  * Esta página es el corazón de la aplicación. Aquí el usuario:
- * - Ve su ubicación actual en Google Maps
+ * - Ve su ubicación actual en Mapbox
  * - Inicia/Pausa/Detiene el seguimiento de millas
  * - Ve en tiempo real la ruta que está recorriendo
  * - Observa estadísticas del viaje actual (distancia, tiempo, velocidad)
  *
  * CARACTERÍSTICAS:
- * - Integración con Google Maps API
+ * - Integración con Mapbox GL JS
  * - Dibujo de polyline del recorrido en tiempo real
  * - Marcadores de inicio/fin del viaje
  * - Actualización automática de estadísticas
@@ -18,42 +22,79 @@
  * - Detección automática de parada (auto-stop)
  */
 
-import { Component, OnInit, OnDestroy, ViewChild, ElementRef, signal, computed } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import {
+  Component,
+  OnInit,
+  OnDestroy,
+  ViewChild,
+  ElementRef,
+  signal,
+  computed,
+  ChangeDetectionStrategy,
+  inject,
+} from '@angular/core';
+
 import { FormsModule } from '@angular/forms';
 import {
-  IonContent, IonHeader, IonTitle, IonToolbar, IonButton, IonIcon,
-  IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonBadge,
-  IonFab, IonFabButton, IonFabList, IonSpinner, IonAlert, IonToast,
-  IonActionSheet, IonChip, IonLabel, AlertController, ToastController
-} from '@ionic/angular/standalone';
+  IonContent,
+  IonButton,
+  IonIcon,
+  IonCard,
+  IonCardContent,
+  IonCardHeader,
+  IonCardTitle,
+  IonFab,
+  IonFabButton,
+  IonFabList,
+  IonSpinner,
+  IonAlert,
+  IonToast,
+  IonActionSheet,
+  IonChip,
+  IonLabel,
+  AlertController,
+  ToastController,
+} from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import {
-  playOutline, pauseOutline, stopOutline, locationOutline,
-  navigateOutline, timeOutline, speedometerOutline, mapOutline,
-  carSportOutline, briefcaseOutline, medkitOutline, heartOutline,
-  homeOutline, ellipsisHorizontalOutline, refreshOutline, warningOutline
+  playOutline,
+  pauseOutline,
+  stopOutline,
+  locationOutline,
+  navigateOutline,
+  timeOutline,
+  speedometerOutline,
+  mapOutline,
+  carSportOutline,
+  briefcaseOutline,
+  medkitOutline,
+  heartOutline,
+  homeOutline,
+  ellipsisHorizontalOutline,
+  refreshOutline,
+  warningOutline,
 } from 'ionicons/icons';
 import { Subscription } from 'rxjs';
+import { GeoJSONSource, Map, Marker } from 'mapbox-gl/esm';
 
 import { GpsTrackingService } from '../../services/gps-tracking.service';
 import { TrackingState, TripPurpose, GpsPoint } from '../../models/interfaces';
 import { environment } from '../../../environments/environment';
 
-// Declaración de Google Maps (se carga desde script externo)
-declare var google: any;
-
 @Component({
   selector: 'app-tracking',
   standalone: true,
   imports: [
-    CommonModule, FormsModule,
-    IonContent, IonHeader, IonTitle, IonToolbar, IonButton, IonIcon,
-    IonBadge,
-    IonSpinner, IonToast
+    FormsModule,
+    IonContent,
+    IonButton,
+    IonIcon,
+    IonSpinner,
+    IonToast,
   ],
   templateUrl: './tracking.page.html',
-  styleUrl: './tracking.page.scss'
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styleUrl: './tracking.page.scss',
 })
 export class TrackingPage implements OnInit, OnDestroy {
   // Referencias del DOM
@@ -77,12 +118,12 @@ export class TrackingPage implements OnInit, OnDestroy {
   toastMessage = signal('');
   toastColor = signal('primary');
 
-  // Google Maps objects
-  private map: any = null;
-  private currentPositionMarker: any = null;
-  private startMarker: any = null;
-  private endMarker: any = null;
-  private routePolyline: any = null;
+  private readonly routeSourceId = 'active-route';
+  private readonly routeLayerId = 'active-route-line';
+  private map: Map | null = null;
+  private currentPositionMarker: Marker | null = null;
+  private startMarker: Marker | null = null;
+  private endMarker: Marker | null = null;
 
   // Subscriptions
   private trackingSubscription?: Subscription;
@@ -91,26 +132,44 @@ export class TrackingPage implements OnInit, OnDestroy {
   // Detección de movimiento
   showDrivingPrompt = signal(false);
 
-  constructor(
-    private gpsTrackingService: GpsTrackingService,
-    private alertController: AlertController,
-    private toastController: ToastController
-  ) {
+  private gpsTrackingService = inject(GpsTrackingService);
+  private alertController = inject(AlertController);
+  private toastController = inject(ToastController);
+
+  constructor() {
     // Registrar iconos de Ionicons
     addIcons({
-      playOutline, pauseOutline, stopOutline, locationOutline,
-      navigateOutline, timeOutline, speedometerOutline, mapOutline,
-      carSportOutline, briefcaseOutline, medkitOutline, heartOutline,
-      homeOutline, ellipsisHorizontalOutline, refreshOutline, warningOutline
+      playOutline,
+      pauseOutline,
+      stopOutline,
+      locationOutline,
+      navigateOutline,
+      timeOutline,
+      speedometerOutline,
+      mapOutline,
+      carSportOutline,
+      briefcaseOutline,
+      medkitOutline,
+      heartOutline,
+      homeOutline,
+      ellipsisHorizontalOutline,
+      refreshOutline,
+      warningOutline,
     });
   }
 
+  private tripsApi = inject(TripService);
+  private syncQueue=inject(MobileTripSyncService);
+  readonly pendingSync=toSignal(this.syncQueue.pendingCount$, {initialValue:0});
+  readonly syncError=toSignal(this.syncQueue.error$, {initialValue:null});
+  private officeRate: number|null = null;
+  private officeCurrency: string|null = null;
   async ngOnInit() {
     console.log('🗺️ TrackingPage: Inicializando...');
 
     // Suscribirse al estado del tracking
-    this.trackingSubscription = this.gpsTrackingService.trackingState$.subscribe(
-      state => {
+    this.trackingSubscription =
+      this.gpsTrackingService.trackingState$.subscribe((state) => {
         console.log('📍 Estado de tracking actualizado:', state);
         this.trackingState.set(state);
 
@@ -118,21 +177,18 @@ export class TrackingPage implements OnInit, OnDestroy {
         if (state.routePoints.length > 0) {
           this.updateMapWithRoute(state.routePoints);
         }
-      }
-    );
+      });
 
     // Suscribirse a la detección de conducción
-    this.drivingDetectionSubscription = this.gpsTrackingService.drivingDetected$.subscribe(
-      async (isDetected) => {
+    this.drivingDetectionSubscription =
+      this.gpsTrackingService.drivingDetected$.subscribe(async (isDetected) => {
         if (isDetected && !this.trackingState()?.isTracking) {
           console.log('🚗 Conducción detectada, mostrando prompt...');
           await this.showDrivingDetectedAlert();
         }
-      }
-    );
+      });
 
-    // Cargar Google Maps
-    await this.loadGoogleMaps();
+    await this.loadMapbox();
   }
 
   ngOnDestroy() {
@@ -143,6 +199,8 @@ export class TrackingPage implements OnInit, OnDestroy {
     if (this.drivingDetectionSubscription) {
       this.drivingDetectionSubscription.unsubscribe();
     }
+    this.map?.remove();
+    this.map = null;
   }
 
   /**
@@ -151,7 +209,8 @@ export class TrackingPage implements OnInit, OnDestroy {
   async showDrivingDetectedAlert() {
     const alert = await this.alertController.create({
       header: '🚗 ¡Movimiento Detectado!',
-      message: 'Parece que estás conduciendo. ¿Deseas iniciar el tracking de millas?',
+      message:
+        'Parece que estás conduciendo. ¿Deseas iniciar el tracking de millas?',
       cssClass: 'driving-detected-alert',
       backdropDismiss: false,
       buttons: [
@@ -160,16 +219,16 @@ export class TrackingPage implements OnInit, OnDestroy {
           role: 'cancel',
           handler: () => {
             console.log('Usuario rechazó iniciar tracking');
-          }
+          },
         },
         {
           text: 'Sí, iniciar',
           handler: () => {
             // Mostrar selector de propósito
             this.showPurposeSelectorForAutoStart();
-          }
-        }
-      ]
+          },
+        },
+      ],
     });
 
     await alert.present();
@@ -188,25 +247,25 @@ export class TrackingPage implements OnInit, OnDestroy {
           type: 'radio',
           label: 'Negocios',
           value: 'business',
-          checked: true
+          checked: true,
         },
         {
           name: 'purpose',
           type: 'radio',
           label: 'Médico',
-          value: 'medical'
+          value: 'medical',
         },
         {
           name: 'purpose',
           type: 'radio',
           label: 'Mudanza',
-          value: 'moving'
-        }
+          value: 'moving',
+        },
       ],
       buttons: [
         {
           text: 'Cancelar',
-          role: 'cancel'
+          role: 'cancel',
         },
         {
           text: 'Iniciar',
@@ -215,9 +274,9 @@ export class TrackingPage implements OnInit, OnDestroy {
               this.selectedPurpose.set(purpose);
               await this.startTracking();
             }
-          }
-        }
-      ]
+          },
+        },
+      ],
     });
 
     await alert.present();
@@ -225,130 +284,84 @@ export class TrackingPage implements OnInit, OnDestroy {
 
   /**
    * ============================================================
-   * CARGA DE GOOGLE MAPS
+   * CARGA DE MAPBOX
    * ============================================================
-   * Carga dinámicamente el script de Google Maps y luego
-   * inicializa el mapa centrado en la ubicación del usuario.
+   * Inicializa el mapa centrado en la ubicación del usuario.
    */
-  private async loadGoogleMaps() {
-    console.log('🗺️ Cargando Google Maps...');
+  private async loadMapbox() {
+    console.log('🗺️ Cargando Mapbox...');
     this.isLoadingMap.set(true);
     this.mapError.set(null);
 
-    const apiKey = environment.googleMapsApiKey;
-
-    // Verificar si hay API key configurada
-    if (!apiKey || apiKey === 'YOUR_GOOGLE_MAPS_API_KEY') {
-      this.mapError.set('API Key de Google Maps no configurada. Configúrala en environment.ts');
+    if (!environment.mapbox.accessToken) {
+      this.mapError.set('Token público de Mapbox no configurado.');
       this.isLoadingMap.set(false);
       return;
     }
 
     try {
-      // Verificar si Google Maps ya está cargado
-      if (typeof google !== 'undefined' && google.maps) {
-        await this.initializeMap();
-        return;
-      }
-
-      // Cargar script de Google Maps dinámicamente
-      await this.loadGoogleMapsScript(apiKey);
       await this.initializeMap();
-
     } catch (error) {
-      console.error('❌ Error cargando Google Maps:', error);
-      this.mapError.set('Error al cargar el mapa. Verifica tu conexión a internet.');
+      console.error('❌ Error cargando Mapbox:', error);
+      this.mapError.set(
+        'Error al cargar el mapa. Verifica tu conexión a internet.'
+      );
       this.isLoadingMap.set(false);
     }
   }
 
-  /**
-   * Carga el script de Google Maps de forma dinámica
-   */
-  private loadGoogleMapsScript(apiKey: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // Verificar si ya existe el script
-      if (document.querySelector('script[src*="maps.googleapis.com"]')) {
-        resolve();
-        return;
-      }
-
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry,places`;
-      script.async = true;
-      script.defer = true;
-
-      script.onload = () => {
-        console.log('✅ Script de Google Maps cargado');
-        resolve();
-      };
-
-      script.onerror = () => {
-        reject(new Error('No se pudo cargar el script de Google Maps'));
-      };
-
-      document.head.appendChild(script);
-    });
-  }
-
-  /**
-   * Inicializa el mapa de Google centrado en la ubicación del usuario
-   */
   private async initializeMap() {
     try {
-      // Obtener ubicación actual del usuario
       const position = await this.getCurrentPosition();
+      this.map?.remove();
 
-      // Configuración del mapa
-      const mapOptions = {
-        center: { lat: position.latitude, lng: position.longitude },
+      this.map = new Map({
+        accessToken: environment.mapbox.accessToken,
+        container: this.mapElement.nativeElement,
+        style: environment.mapbox.style,
+        center: [position.longitude, position.latitude],
         zoom: 16,
-        mapTypeId: google.maps.MapTypeId.ROADMAP,
-        disableDefaultUI: false,
-        zoomControl: true,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: true,
-        styles: this.getMapStyles()
-      };
+      });
 
-      // Crear el mapa
-      this.map = new google.maps.Map(this.mapElement.nativeElement, mapOptions);
+      await new Promise<void>((resolve, reject) => {
+        this.map!.once('load', () => resolve());
+        this.map!.once('error', (event) => reject(event.error));
+      });
 
-      // Detect dark mode for marker colors
       const isDarkMode = document.body.classList.contains('dark');
 
-      // Crear marcador de posición actual
-      this.currentPositionMarker = new google.maps.Marker({
-        position: { lat: position.latitude, lng: position.longitude },
-        map: this.map,
-        title: 'Tu ubicación',
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 10,
-          fillColor: isDarkMode ? '#60a5fa' : '#3182ce',
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 3
-        }
+      this.currentPositionMarker = new Marker({
+        color: isDarkMode ? '#60a5fa' : '#3182ce',
+        scale: 0.85,
+      })
+        .setLngLat([position.longitude, position.latitude])
+        .addTo(this.map);
+
+      this.map.addSource(this.routeSourceId, {
+        type: 'geojson',
+        data: this.routeFeature([]),
+      });
+      this.map.addLayer({
+        id: this.routeLayerId,
+        type: 'line',
+        source: this.routeSourceId,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': isDarkMode ? '#60a5fa' : '#1a365d',
+          'line-width': 4,
+        },
       });
 
-      // Crear polyline para la ruta (vacía inicialmente)
-      this.routePolyline = new google.maps.Polyline({
-        path: [],
-        geodesic: true,
-        strokeColor: isDarkMode ? '#60a5fa' : '#1a365d',
-        strokeOpacity: 1.0,
-        strokeWeight: 4
-      });
-      this.routePolyline.setMap(this.map);
+      const existingRoute = this.trackingState()?.routePoints ?? [];
+      if (existingRoute.length > 0) this.updateMapWithRoute(existingRoute);
 
       console.log('✅ Mapa inicializado correctamente');
       this.isLoadingMap.set(false);
-
     } catch (error) {
       console.error('❌ Error inicializando mapa:', error);
-      this.mapError.set('No se pudo obtener tu ubicación. Verifica los permisos de GPS.');
+      this.mapError.set(
+        'No se pudo obtener tu ubicación. Verifica los permisos de GPS.'
+      );
       this.isLoadingMap.set(false);
     }
   }
@@ -356,14 +369,18 @@ export class TrackingPage implements OnInit, OnDestroy {
   /**
    * Obtiene la posición actual del usuario usando el servicio de GPS
    */
-  private getCurrentPosition(): Promise<{ latitude: number; longitude: number }> {
+  private getCurrentPosition(): Promise<{
+    latitude: number;
+    longitude: number;
+  }> {
     return new Promise((resolve, reject) => {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
-          (pos) => resolve({
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude
-          }),
+          (pos) =>
+            resolve({
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+            }),
           (err) => reject(err),
           { enableHighAccuracy: true, timeout: 10000 }
         );
@@ -374,124 +391,10 @@ export class TrackingPage implements OnInit, OnDestroy {
   }
 
   /**
-   * Estilos personalizados para el mapa (tema TaxPro)
-   */
-  private getMapStyles() {
-    // Detect if dark mode is enabled
-    const isDarkMode = document.body.classList.contains('dark');
-
-    if (isDarkMode) {
-      // Dark mode map styles
-      return [
-        { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
-        { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
-        { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
-        {
-          featureType: 'administrative.locality',
-          elementType: 'labels.text.fill',
-          stylers: [{ color: '#d59563' }]
-        },
-        {
-          featureType: 'poi',
-          elementType: 'labels.text.fill',
-          stylers: [{ color: '#d59563' }]
-        },
-        {
-          featureType: 'poi',
-          elementType: 'labels',
-          stylers: [{ visibility: 'off' }]
-        },
-        {
-          featureType: 'poi.park',
-          elementType: 'geometry',
-          stylers: [{ color: '#263c3f' }]
-        },
-        {
-          featureType: 'poi.park',
-          elementType: 'labels.text.fill',
-          stylers: [{ color: '#6b9a76' }]
-        },
-        {
-          featureType: 'road',
-          elementType: 'geometry',
-          stylers: [{ color: '#38414e' }]
-        },
-        {
-          featureType: 'road',
-          elementType: 'geometry.stroke',
-          stylers: [{ color: '#212a37' }]
-        },
-        {
-          featureType: 'road',
-          elementType: 'labels.text.fill',
-          stylers: [{ color: '#9ca5b3' }]
-        },
-        {
-          featureType: 'road.highway',
-          elementType: 'geometry',
-          stylers: [{ color: '#746855' }]
-        },
-        {
-          featureType: 'road.highway',
-          elementType: 'geometry.stroke',
-          stylers: [{ color: '#1f2835' }]
-        },
-        {
-          featureType: 'road.highway',
-          elementType: 'labels.text.fill',
-          stylers: [{ color: '#f3d19c' }]
-        },
-        {
-          featureType: 'transit',
-          elementType: 'geometry',
-          stylers: [{ color: '#2f3948' }]
-        },
-        {
-          featureType: 'transit',
-          stylers: [{ visibility: 'off' }]
-        },
-        {
-          featureType: 'transit.station',
-          elementType: 'labels.text.fill',
-          stylers: [{ color: '#d59563' }]
-        },
-        {
-          featureType: 'water',
-          elementType: 'geometry',
-          stylers: [{ color: '#17263c' }]
-        },
-        {
-          featureType: 'water',
-          elementType: 'labels.text.fill',
-          stylers: [{ color: '#515c6d' }]
-        },
-        {
-          featureType: 'water',
-          elementType: 'labels.text.stroke',
-          stylers: [{ color: '#17263c' }]
-        }
-      ];
-    } else {
-      // Light mode map styles
-      return [
-        {
-          featureType: 'poi',
-          elementType: 'labels',
-          stylers: [{ visibility: 'off' }]
-        },
-        {
-          featureType: 'transit',
-          stylers: [{ visibility: 'off' }]
-        }
-      ];
-    }
-  }
-
-  /**
    * Reintentar cargar el mapa
    */
   retryLoadMap() {
-    this.loadGoogleMaps();
+    this.loadMapbox();
   }
 
   /**
@@ -500,43 +403,42 @@ export class TrackingPage implements OnInit, OnDestroy {
    * ============================================================
    */
   private updateMapWithRoute(routePoints: GpsPoint[]) {
-    if (!this.map || !this.routePolyline || routePoints.length === 0) return;
+    if (!this.map || !this.map.isStyleLoaded() || routePoints.length === 0) return;
 
-    // Convertir puntos a formato Google Maps
-    const path = routePoints.map(point => ({
-      lat: point.latitude,
-      lng: point.longitude
-    }));
+    const path: [number, number][] = routePoints.map((point) => [
+      point.longitude,
+      point.latitude,
+    ]);
 
-    // Actualizar polyline
-    this.routePolyline.setPath(path);
+    const source = this.map.getSource(this.routeSourceId) as
+      | GeoJSONSource
+      | undefined;
+    source?.setData(this.routeFeature(path));
 
     // Mover marcador de posición actual al último punto
     const lastPoint = path[path.length - 1];
     if (this.currentPositionMarker) {
-      this.currentPositionMarker.setPosition(lastPoint);
+      this.currentPositionMarker.setLngLat(lastPoint);
     }
 
-    // Centrar mapa en la posición actual
-    this.map.panTo(lastPoint);
+    this.map.easeTo({ center: lastPoint, duration: 400 });
 
-    // Añadir marcador de inicio si es el primer punto
-    if (path.length === 1 && !this.startMarker) {
-      this.startMarker = new google.maps.Marker({
-        position: path[0],
-        map: this.map,
-        title: 'Inicio del recorrido',
-        icon: {
-          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="10" fill="#38a169"/>
-              <text x="12" y="16" text-anchor="middle" fill="white" font-size="12" font-weight="bold">A</text>
-            </svg>
-          `),
-          scaledSize: new google.maps.Size(32, 32)
-        }
-      });
+    if (!this.startMarker) {
+      this.startMarker = new Marker({ color: '#38a169', scale: 0.8 })
+        .setLngLat(path[0])
+        .addTo(this.map);
     }
+  }
+
+  private routeFeature(coordinates: [number, number][]) {
+    return {
+      type: 'Feature' as const,
+      properties: {},
+      geometry: {
+        type: 'LineString' as const,
+        coordinates,
+      },
+    };
   }
 
   /**
@@ -566,25 +468,27 @@ export class TrackingPage implements OnInit, OnDestroy {
     this.isStartingTracking.set(true);
 
     try {
+      const rate=await firstValueFrom(this.tripsApi.getMileageConfiguration(purpose));
+      this.officeRate=rate.mileageRate;this.officeCurrency=rate.currency;
       await this.gpsTrackingService.startTracking(purpose);
       this.showNotification('¡Tracking iniciado! Buen viaje 🚗', 'success');
 
       // Limpiar marcadores anteriores
       if (this.startMarker) {
-        this.startMarker.setMap(null);
+        this.startMarker.remove();
         this.startMarker = null;
       }
       if (this.endMarker) {
-        this.endMarker.setMap(null);
+        this.endMarker.remove();
         this.endMarker = null;
       }
-      if (this.routePolyline) {
-        this.routePolyline.setPath([]);
-      }
-
+      this.clearRouteLine();
     } catch (error: any) {
       console.error('❌ Error iniciando tracking:', error);
-      this.showNotification(error.message || 'Error al iniciar el tracking', 'danger');
+      this.showNotification(
+        error.message || 'Error al iniciar el tracking',
+        'danger'
+      );
     } finally {
       this.isStartingTracking.set(false);
     }
@@ -593,16 +497,16 @@ export class TrackingPage implements OnInit, OnDestroy {
   /**
    * Pausar tracking
    */
-  pauseTracking() {
-    this.gpsTrackingService.pauseTracking();
+  async pauseTracking() {
+    try { await this.gpsTrackingService.pauseTracking(); } catch(error) { this.showNotification('No se pudo guardar la pausa','danger'); return; }
     this.showNotification('Tracking pausado', 'warning');
   }
 
   /**
    * Reanudar tracking
    */
-  resumeTracking() {
-    this.gpsTrackingService.resumeTracking();
+  async resumeTracking() {
+    try { await this.gpsTrackingService.resumeTracking(); } catch(error) { this.showNotification('No se pudo guardar la reanudacion','danger'); return; }
     this.showNotification('Tracking reanudado', 'success');
   }
 
@@ -612,19 +516,20 @@ export class TrackingPage implements OnInit, OnDestroy {
   async confirmStopTracking() {
     const alert = await this.alertController.create({
       header: 'Finalizar Recorrido',
-      message: '¿Estás seguro de que deseas finalizar este recorrido? Los datos se guardarán automáticamente.',
+      message:
+        '¿Estás seguro de que deseas finalizar este recorrido? Los datos se guardarán automáticamente.',
       cssClass: 'taxpro-alert',
       buttons: [
         {
           text: 'Cancelar',
-          role: 'cancel'
+          role: 'cancel',
         },
         {
           text: 'Finalizar',
           role: 'confirm',
-          handler: () => this.stopTracking()
-        }
-      ]
+          handler: () => this.stopTracking(),
+        },
+      ],
     });
 
     await alert.present();
@@ -638,35 +543,29 @@ export class TrackingPage implements OnInit, OnDestroy {
       // Obtener estado antes de detener para mostrar marcador de fin
       const stateBeforeStop = this.trackingState();
 
-      await this.gpsTrackingService.stopTracking();
+      const savedTrip = await this.gpsTrackingService.stopTracking();
 
       // Añadir marcador de fin
       if (stateBeforeStop && stateBeforeStop.routePoints.length > 0) {
-        const lastPoint = stateBeforeStop.routePoints[stateBeforeStop.routePoints.length - 1];
-        this.endMarker = new google.maps.Marker({
-          position: { lat: lastPoint.latitude, lng: lastPoint.longitude },
-          map: this.map,
-          title: 'Fin del recorrido',
-          icon: {
-            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10" fill="#e53e3e"/>
-                <text x="12" y="16" text-anchor="middle" fill="white" font-size="12" font-weight="bold">B</text>
-              </svg>
-            `),
-            scaledSize: new google.maps.Size(32, 32)
-          }
-        });
+        const lastPoint =
+          stateBeforeStop.routePoints[stateBeforeStop.routePoints.length - 1];
+        if (this.map) {
+          this.endMarker = new Marker({ color: '#e53e3e', scale: 0.8 })
+            .setLngLat([lastPoint.longitude, lastPoint.latitude])
+            .addTo(this.map);
+        }
       }
 
-      this.showNotification('¡Recorrido finalizado y guardado! ✅', 'success');
+      this.showNotification(savedTrip?.syncState === 'pending' ? 'Recorrido guardado en el dispositivo. Sincronizacion pendiente.' : 'Recorrido sincronizado correctamente.', 'success');
 
       // Reiniciar completamente el estado
       this.resetTrackingUI();
-
     } catch (error: any) {
       console.error('❌ Error deteniendo tracking:', error);
-      this.showNotification(error.message || 'Error al finalizar el recorrido', 'danger');
+      this.showNotification(
+        error.message || 'Error al finalizar el recorrido',
+        'danger'
+      );
     }
   }
 
@@ -680,17 +579,23 @@ export class TrackingPage implements OnInit, OnDestroy {
     // Limpiar marcadores después de un tiempo para que el usuario vea el resultado
     setTimeout(() => {
       if (this.startMarker) {
-        this.startMarker.setMap(null);
+        this.startMarker.remove();
         this.startMarker = null;
       }
       if (this.endMarker) {
-        this.endMarker.setMap(null);
+        this.endMarker.remove();
         this.endMarker = null;
       }
-      if (this.routePolyline) {
-        this.routePolyline.setPath([]);
-      }
+      this.clearRouteLine();
     }, 3000);
+  }
+
+  private clearRouteLine(): void {
+    if (!this.map || !this.map.isStyleLoaded()) return;
+    const source = this.map.getSource(this.routeSourceId) as
+      | GeoJSONSource
+      | undefined;
+    source?.setData(this.routeFeature([]));
   }
 
   /**
@@ -709,7 +614,9 @@ export class TrackingPage implements OnInit, OnDestroy {
     const secs = seconds % 60;
 
     if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs
+        .toString()
+        .padStart(2, '0')}`;
     }
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   }
@@ -720,8 +627,8 @@ export class TrackingPage implements OnInit, OnDestroy {
   }
 
   calculateDeduction(miles: number): string {
-    const rate = environment.app.mileageRate;
-    return (miles * rate).toFixed(2);
+    if(this.officeRate==null) return 'Sin tarifa configurada';
+    return `${(miles*this.officeRate).toFixed(2)} ${this.officeCurrency ?? ''}`;
   }
 
   getStatusColor(): string {
@@ -743,7 +650,8 @@ export class TrackingPage implements OnInit, OnDestroy {
       business: 'briefcase-outline',
       medical: 'medkit-outline',
       moving: 'home-outline',
-      personal: 'car-sport-outline'
+      personal: 'car-sport-outline',
+      charity: 'heart-outline',
     };
     return icons[purpose || 'personal'];
   }
@@ -753,7 +661,8 @@ export class TrackingPage implements OnInit, OnDestroy {
       business: 'Negocios',
       medical: 'Médico',
       moving: 'Mudanza',
-      personal: 'Personal'
+      personal: 'Personal',
+      charity: 'Beneficencia',
     };
     return labels[purpose || 'personal'];
   }
@@ -763,7 +672,8 @@ export class TrackingPage implements OnInit, OnDestroy {
       business: 'primary',
       medical: 'danger',
       moving: 'secondary',
-      personal: 'medium'
+      personal: 'medium',
+      charity: 'tertiary',
     };
     return colors[purpose || 'personal'];
   }

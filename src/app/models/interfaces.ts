@@ -21,8 +21,6 @@ export interface User {
 
 export interface Vehicle {
   id?: string;
-  customerId: string;
-  companyId: string;
   plate: string;
   photo?: string;
   make?: string;
@@ -32,6 +30,17 @@ export interface Vehicle {
   currentMileage: number;
   updatedAt: string;
   isDefault: boolean;
+}
+
+export type VehicleInput = Pick<Vehicle, "plate" | "make" | "model" | "year" | "color" | "photo" | "currentMileage" | "isDefault">;
+
+export interface VehiclePage {
+  items: Vehicle[];
+  page: number;
+  size: number;
+  totalCount: number;
+  totalPages: number;
+  hasMore: boolean;
 }
 
 export interface IPersonalData {
@@ -85,12 +94,19 @@ export interface LatLng {
 // ===========================================
 
 export type TripStatus = 'InProgress' | 'Completed' | 'Paused' | 'Cancelled';
-export type TripPurpose = 'business' | 'medical' | 'moving' | 'personal';
+export type TripPurpose = 'business' | 'medical' | 'moving' | 'personal' | 'charity';
 
 export interface Trip {
   id: string;
-  customerid: string;
-  companyid: string;
+  customerid?: string;
+  companyid?: string;
+  clientTripId?: string;
+  revision?: number;
+  lastAcceptedPointSequence?: number;
+  estimatedAmount?: number | null;
+  currency?: string | null;
+  ratePerMile?: number | null;
+  syncState?: 'pending' | 'synced';
   vehicleId?: string;
   startTime: string;
   endTime?: string;
@@ -140,7 +156,9 @@ export interface UserStatistics {
   totalMiles: number;
   totalKilometers: number;
   totalDurationSeconds: number;
-  totalDeductionAmount: number;
+  totalDeductionAmount: number | null;
+  estimatedAmounts?: { currency: string; amount: number }[];
+  tripsWithoutRate?: number;
   tripsThisWeek: number;
   milesThisWeek: number;
   tripsThisMonth: number;
@@ -155,6 +173,7 @@ export interface UserStatistics {
     medical: number;
     moving: number;
     personal: number;
+    charity?: number;
   };
 }
 
@@ -219,6 +238,7 @@ export interface TripFilters {
 // ===========================================
 
 export interface TrackingState {
+  vehicleId?: string;
   tripId?: string;       // ID único del trip (UUID generado al iniciar)
   purpose?: TripPurpose; // Propósito del viaje (business, medical, etc.)
   isTracking: boolean;
@@ -340,7 +360,7 @@ export interface IIRSConfiguration {
   taxUserId: string;   // GUID
   name: string | null;
   currency: string | null;
-  mileageRate: number; // decimal en backend
+  mileageRate: number | null; // sin tarifa configurada: null
   distanceUnit: string; // ej: "miles" | "km" (si quieres lo tipamos)
   isActive: boolean;
   isAll: boolean;
