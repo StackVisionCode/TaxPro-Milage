@@ -41,6 +41,7 @@ export interface IAuthTokens {
 
 export interface ITakeoverResponse {
   takeoverRequired: boolean;
+  mfaSetupRequired?: boolean;
   tokens?: IAuthTokens;
 }
 

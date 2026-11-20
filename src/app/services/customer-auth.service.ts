@@ -30,6 +30,7 @@ import {
   ITakeoverResponse,
 } from '../models/customer-login.interface';
 import { CustomerTokenService } from './customer-token.service';
+import { interpretLoginResponse, MfaSetupRequiredError } from './customer-login-outcome';
 import { environment } from '../../environments/environment';
 import { NativeBiometric, BiometryType } from '@capgo/capacitor-native-biometric';
 import { Capacitor } from '@capacitor/core';
@@ -109,6 +110,9 @@ export class CustomerAuthService implements OnDestroy {
       )
       .pipe(
         switchMap((response) => {
+          if (response.mfaSetupRequired) {
+            return throwError(() => new MfaSetupRequiredError());
+          }
           const tokens = response.tokens;
           if (!tokens?.accessToken || !tokens.refreshToken) {
             return throwError(() => new Error('No se recibieron tokens de sesión.'));
@@ -126,14 +130,16 @@ export class CustomerAuthService implements OnDestroy {
   private processLoginResponse(
     response: ICustomerLoginResponse
   ): Observable<ICustomerLoginResponse> {
-    if (!response.accessToken || !response.refreshToken) {
+    const outcome = interpretLoginResponse(response);
+    // Un token que solo sirve para configurar MFA no se guarda: la API de la app lo rechaza.
+    if (outcome.kind === 'mfaSetupRequired') {
+      return throwError(() => new MfaSetupRequiredError());
+    }
+    if (outcome.kind !== 'session') {
       return of(response);
     }
 
-    this.customerTokenService.setTokens(
-      response.accessToken,
-      response.refreshToken
-    );
+    this.customerTokenService.setTokens(outcome.accessToken, outcome.refreshToken);
     return this.loadCustomerProfile().pipe(map(() => response));
   }
 

@@ -48,6 +48,7 @@ import {
   ICustomerLoginResponse,
   ICustomerTenantOption,
 } from '../../models/customer-login.interface';
+import { loginErrorMessage } from '../../services/customer-login-outcome';
 import {
   businessOutline,
   locationOutline,
@@ -224,8 +225,7 @@ export class LoginPage implements OnInit {
       },
       error: (error) => {
         console.error('Error en login:', error);
-        this.errorMessage =
-          error?.error?.message || error?.message || 'Error al iniciar sesión';
+        this.errorMessage = loginErrorMessage(error, 'Error al iniciar sesión');
         this.isLoading = false;
       },
       complete: () => {
@@ -294,10 +294,7 @@ export class LoginPage implements OnInit {
         },
         error: (error) => {
           console.error('Error en login con oficina:', error);
-          this.errorMessage =
-            error?.error?.message ||
-            error?.message ||
-            'Error al seleccionar la oficina';
+          this.errorMessage = loginErrorMessage(error, 'Error al seleccionar la oficina');
           this.isLoading = false;
         },
       });
@@ -347,8 +344,7 @@ export class LoginPage implements OnInit {
         await this.completeLoginFlow();
       },
       error: (error) => {
-        this.errorMessage =
-          error?.error?.message || 'No se pudo transferir la sesión.';
+        this.errorMessage = loginErrorMessage(error, 'No se pudo transferir la sesión.');
         this.isLoading = false;
       },
     });
