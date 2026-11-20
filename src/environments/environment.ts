@@ -14,7 +14,7 @@ export const environment = {
 
   // Gateway local de TaxVision. Ionic sirve el frontend en http://localhost:8100.
   //apiUrl: 'http://localhost:5047',
-  apiUrl: 'http://localhost:5047',
+  apiUrl: 'https://api.taxoffix.io',
   communication: { androidPushConfigured: true },
   endpoints: {
     login: '/auth/mobile/login',

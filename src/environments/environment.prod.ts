@@ -12,7 +12,7 @@ export const environment = {
   // CONFIGURACIÓN DE API - PRODUCCIÓN
   // ===========================================
 
-  apiUrl: 'http://localhost:5047',
+  apiUrl: 'https://api.taxoffix.io',
 
   communication: { androidPushConfigured: true },
   endpoints: {
