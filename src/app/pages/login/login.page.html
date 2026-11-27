@@ -83,6 +83,14 @@
             <!-- Título -->
             <p class="login-subtitle">Inicia sesión para continuar</p>
 
+            <!-- Aviso de cierre de sesión -->
+            @if (noticeMessage) {
+            <div class="notice-banner" role="status">
+                <ion-icon name="alert-circle-outline"></ion-icon>
+                <span>{{ noticeMessage }}</span>
+            </div>
+            }
+
             <!-- Formulario de Login -->
             <form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
 
@@ -142,6 +150,10 @@
                 </ion-button>
 
             </form>
+
+            <!-- Forgot: abre el portal web de la oficina -->
+            <button type="button" class="forgot-link" (click)="openForgotPassword()">Forgot password?</button>
+            <p class="forgot-hint">{{ forgotPasswordHint }}</p>
 
             <!-- Separador -->
             @if (biometryAvailable) {

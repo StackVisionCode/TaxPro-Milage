@@ -49,6 +49,9 @@ import {
   ICustomerTenantOption,
 } from '../../models/customer-login.interface';
 import { loginErrorMessage } from '../../services/customer-login-outcome';
+import { FORGOT_PASSWORD_HINT, QuickSignInDisabledError } from '../../services/session-end';
+import { SessionEndService } from '../../services/session-end.service';
+import { Browser } from '@capacitor/browser';
 import {
   businessOutline,
   locationOutline,
@@ -78,6 +81,11 @@ export class LoginPage implements OnInit {
   private fb = inject(FormBuilder);
   private alertController = inject(AlertController);
   private loadingController = inject(LoadingController);
+  private sessionEnd = inject(SessionEndService);
+
+  // Aviso de por qué terminó la sesión
+  noticeMessage = '';
+  readonly forgotPasswordHint = FORGOT_PASSWORD_HINT;
 
   // Formulario de login
   loginForm: FormGroup;
@@ -115,6 +123,7 @@ export class LoginPage implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
+    this.showSessionEndNotice();
     // Verificar si hay biometría disponible
     await this.checkBiometricAvailability();
     // La redirección si ya está autenticado se maneja con noAuthGuard en las rutas
@@ -123,7 +132,22 @@ export class LoginPage implements OnInit {
   /**
    * Verifica si hay biometría disponible en el dispositivo
    */
-  async ionViewWillEnter(): Promise<void> { await this.checkBiometricAvailability(); }
+  async ionViewWillEnter(): Promise<void> { this.showSessionEndNotice(); await this.checkBiometricAvailability(); }
+
+  private showSessionEndNotice(): void {
+    const notice = this.sessionEnd.takeNotice();
+    if (notice) this.noticeMessage = notice;
+  }
+
+  /** Sin forgot propio: abre el del portal de la oficina (o el login central de clientes). */
+  async openForgotPassword(): Promise<void> {
+    const url = this.sessionEnd.forgotPasswordUrl();
+    try {
+      await Browser.open({ url });
+    } catch {
+      window.open(url, '_blank');
+    }
+  }
 
   async checkBiometricAvailability(): Promise<void> {
     this.biometryAvailable = false; this.biometricEnabled = false;
@@ -181,6 +205,7 @@ export class LoginPage implements OnInit {
 
     this.isLoading = true;
     this.errorMessage = '';
+    this.noticeMessage = '';
 
     // Limpiar localStorage antes del login
     this.authService.clearStorageBeforeLogin();
@@ -277,6 +302,7 @@ export class LoginPage implements OnInit {
     mfaCode?: string
   ): void {
     if (!this.pendingDiscoverySessionRef) return;
+    this.sessionEnd.rememberOffice(office.subdomain);
 
     this.isLoading = true;
     this.errorMessage = '';
@@ -429,6 +455,13 @@ export class LoginPage implements OnInit {
       await loading.dismiss();
 
       console.error('Error en login biométrico:', error);
+
+      // El servidor cerró la sesión: la biometría ya se borró
+      if (error instanceof QuickSignInDisabledError) {
+        this.biometricEnabled = false;
+        this.noticeMessage = error.message;
+        return;
+      }
 
       // Verificar si es un error de token expirado o credenciales inválidas
       if (

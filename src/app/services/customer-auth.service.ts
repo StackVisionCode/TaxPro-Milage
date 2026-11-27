@@ -2,7 +2,7 @@ import { MobileSessionService } from '../communication/mobile-session.service';
 import { MobilePushService } from '../communication/mobile-push.service';
 import { isPendingTrackingStorageKey } from './tracking-storage-keys';
 import { HttpClient } from '@angular/common/http';
-import { inject, Injectable, OnDestroy } from '@angular/core';
+import { inject, Injectable, Injector, OnDestroy } from '@angular/core';
 import {
   BehaviorSubject,
   firstValueFrom,
@@ -31,6 +31,8 @@ import {
 } from '../models/customer-login.interface';
 import { CustomerTokenService } from './customer-token.service';
 import { interpretLoginResponse, MfaSetupRequiredError } from './customer-login-outcome';
+import { QuickSignInDisabledError, renewQuickSignIn } from './session-end';
+import { SessionEndService } from './session-end.service';
 import { environment } from '../../environments/environment';
 import { NativeBiometric, BiometryType } from '@capgo/capacitor-native-biometric';
 import { Capacitor } from '@capacitor/core';
@@ -54,6 +56,7 @@ export class CustomerAuthService implements OnDestroy {
   private tripService : TripService = inject(TripService);
   private trackingService : GpsTrackingService = inject(GpsTrackingService);
   private router = inject(Router);
+  private injector = inject(Injector);
 
   public currentCustomerSubject = new BehaviorSubject<ICustomerProfile | null>(null);
   currentCustomer$ = this.currentCustomerSubject.asObservable();
@@ -174,6 +177,7 @@ export class CustomerAuthService implements OnDestroy {
             timeZoneId: response.timeZoneId,
           };
           this.currentCustomerSubject.next(customer);
+          this.injector.get(SessionEndService).rememberOffice(response.tenant?.subDomain);
           return customer;
         }),
         catchError((error) => {
@@ -499,22 +503,19 @@ export class CustomerAuthService implements OnDestroy {
         const isTokenExpired = this.isTokenExpired(accessToken);
 
         if (isTokenExpired) {
-          // Intentar refrescar el token usando el refreshToken
-          try {
-            const newTokens = await this.refreshTokens(refreshToken);
-            if (newTokens) {
-              accessToken = newTokens.accessToken;
-              refreshToken = newTokens.refreshToken;
+          // Rechazo del servidor: borra la biometría y avisa; por red se conserva.
+          const newTokens = await renewQuickSignIn(
+            () => this.refreshTokens(refreshToken),
+            () => this.setBiometricLoginEnabled(false)
+          );
+          if (newTokens) {
+            accessToken = newTokens.accessToken;
+            refreshToken = newTokens.refreshToken;
 
-              // Actualizar credenciales biométricas con los nuevos tokens
-              await this.updateBiometricCredentials(credentials.username, accessToken, refreshToken);
-            } else {
-              // No se pudo refrescar, el usuario debe hacer login manual
-              return false;
-            }
-          } catch (refreshError) {
-            console.error('Error refreshing token:', refreshError);
-            // El refreshToken también expiró o falló
+            // Actualizar credenciales biométricas con los nuevos tokens
+            await this.updateBiometricCredentials(credentials.username, accessToken, refreshToken);
+          } else {
+            // No se pudo refrescar, el usuario debe hacer login manual
             return false;
           }
         }
@@ -530,6 +531,7 @@ export class CustomerAuthService implements OnDestroy {
       return false;
     } catch (error: any) {
       console.error('Biometric authentication failed:', error);
+      if (error instanceof QuickSignInDisabledError) throw error;
       throw new Error(error.message || 'No se pudo verificar tu identidad');
     }
   }
@@ -552,26 +554,22 @@ export class CustomerAuthService implements OnDestroy {
    * Intenta refrescar los tokens usando el refreshToken
    */
   private async refreshTokens(refreshToken: string): Promise<{ accessToken: string; refreshToken: string } | null> {
-    try {
-      const response = await this.http.post<{
-        accessToken: string;
-        refreshToken: string;
-      }>(
-        `${environment.apiUrl}${environment.endpoints.refreshToken}`,
-        { refreshToken }
-      ).toPromise();
+    // El error sube para distinguir rechazo del servidor de fallo de red.
+    const response = await this.http.post<{
+      accessToken: string;
+      refreshToken: string;
+    }>(
+      `${environment.apiUrl}${environment.endpoints.refreshToken}`,
+      { refreshToken }
+    ).toPromise();
 
-      if (response?.accessToken && response.refreshToken) {
-        return {
-          accessToken: response.accessToken,
-          refreshToken: response.refreshToken
-        };
-      }
-      return null;
-    } catch (error) {
-      console.error('Error in refreshTokens:', error);
-      return null;
+    if (response?.accessToken && response.refreshToken) {
+      return {
+        accessToken: response.accessToken,
+        refreshToken: response.refreshToken
+      };
     }
+    return null;
   }
 
   /**

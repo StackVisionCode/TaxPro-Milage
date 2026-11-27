@@ -11,6 +11,7 @@ import { catchError, switchMap, throwError } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { CustomerSessionRefreshService } from '../services/customer-session-refresh.service';
 import { CustomerTokenService } from '../services/customer-token.service';
+import { SessionEndService } from '../services/session-end.service';
 
 export const authInterceptor: HttpInterceptorFn = (
   req: HttpRequest<unknown>,
@@ -19,6 +20,7 @@ export const authInterceptor: HttpInterceptorFn = (
   const tokenService = inject(CustomerTokenService);
   const refreshService = inject(CustomerSessionRefreshService);
   const router = inject(Router);
+  const sessionEnd = inject(SessionEndService);
 
   if (!req.url.startsWith(environment.apiUrl)) return next(req);
 
@@ -46,10 +48,8 @@ export const authInterceptor: HttpInterceptorFn = (
             ? next(addTokenToRequest(req, accessToken))
             : throwError(()=>new Error('La cuenta cambio durante la solicitud.'))),
           catchError((refreshError) => {
-            if(identity()===owner) {
-              tokenService.removeTokens();
-              router.navigate(['/login']);
-            }
+            // Por red no se cierra la sesión; si el servidor la rechaza, se cierra con el motivo.
+            if(identity()===owner) sessionEnd.handleRefreshFailure(refreshError);
             return throwError(() => refreshError);
           })
         );
