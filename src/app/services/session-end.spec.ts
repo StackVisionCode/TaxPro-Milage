@@ -10,6 +10,7 @@ import {
   forgotPasswordUrl,
   isTransientRefreshFailure,
   NO_CONNECTION_MESSAGE,
+  portalLoginUrl,
   QUICK_SIGN_IN_OFF_MESSAGE,
   QuickSignInDisabledError,
   refreshRejectionReason,
@@ -73,6 +74,17 @@ describe('SessionEnd', () => {
     });
   });
 
+  describe('portal login url', () => {
+    it('opens the login of the office portal', () => {
+      expect(portalLoginUrl('acme', 'https://api.taxoffix.io')).toBe('https://acme.taxoffix.io/portal/client/auth/login');
+    });
+
+    it('opens the central client login without an office', () => {
+      expect(portalLoginUrl(undefined, 'https://api.taxoffix.io')).toBe('https://app.taxoffix.io/client');
+      expect(portalLoginUrl('evil.com/x', 'https://api.taxoffix.io')).toBe('https://app.taxoffix.io/client');
+    });
+  });
+
   describe('quick sign-in renewal', () => {
     it('forgets the saved credentials when the server rejects the refresh', async () => {
       const forget = jasmine.createSpy('forget').and.resolveTo();
@@ -110,5 +122,7 @@ describe('SessionEnd', () => {
     service.rememberOffice('acme');
     expect(service.forgotPasswordUrl()).toContain('://acme.');
     expect(service.forgotPasswordUrl()).toContain('/portal/client/auth/forgot-password');
+    expect(service.portalLoginUrl()).toContain('://acme.');
+    expect(service.portalLoginUrl()).toContain('/portal/client/auth/login');
   });
 });

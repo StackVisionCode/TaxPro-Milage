@@ -10,6 +10,7 @@ import {
   forgotPasswordUrl,
   isTransientRefreshFailure,
   NO_CONNECTION_MESSAGE,
+  portalLoginUrl,
   refreshRejectionReason,
   sessionEndMessage,
 } from './session-end';
@@ -34,6 +35,11 @@ export class SessionEndService {
 
   forgotPasswordUrl(): string {
     return forgotPasswordUrl(this.officeSubdomain);
+  }
+
+  /** Portal de la oficina para el cambio obligatorio cuando Auth no da `portalUrl`. */
+  portalLoginUrl(): string {
+    return portalLoginUrl(this.officeSubdomain);
   }
 
   /** Aviso pendiente para el login; se entrega una sola vez. */

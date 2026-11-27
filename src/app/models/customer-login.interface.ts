@@ -30,6 +30,9 @@ export interface ICustomerLoginResponse {
   takeoverTicket?: string;
   takeoverTicketExpiresInSeconds?: number;
   deviceToken?: string;
+  // Cambio obligatorio: los tokens son restringidos y la app no abre sesión.
+  passwordChangeRequired?: boolean;
+  portalUrl?: string | null;
 }
 
 export interface IAuthTokens {

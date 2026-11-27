@@ -48,7 +48,8 @@ import {
   ICustomerLoginResponse,
   ICustomerTenantOption,
 } from '../../models/customer-login.interface';
-import { loginErrorMessage } from '../../services/customer-login-outcome';
+import { loginErrorMessage, PasswordChangeRequiredError } from '../../services/customer-login-outcome';
+import { PasswordChangePromptService } from '../../services/password-change-prompt.service';
 import { FORGOT_PASSWORD_HINT, QuickSignInDisabledError } from '../../services/session-end';
 import { SessionEndService } from '../../services/session-end.service';
 import { Browser } from '@capacitor/browser';
@@ -82,6 +83,7 @@ export class LoginPage implements OnInit {
   private alertController = inject(AlertController);
   private loadingController = inject(LoadingController);
   private sessionEnd = inject(SessionEndService);
+  private passwordChangePrompt = inject(PasswordChangePromptService);
 
   // Aviso de por qué terminó la sesión
   noticeMessage = '';
@@ -101,6 +103,7 @@ export class LoginPage implements OnInit {
   showCompanySelection = false;
   availableOffices: ICustomerTenantOption[] = [];
   private pendingDiscoverySessionRef: string | null = null;
+  private selectedOfficeName: string | null = null;
 
   constructor() {
     // Registrar iconos
@@ -250,6 +253,7 @@ export class LoginPage implements OnInit {
       },
       error: (error) => {
         console.error('Error en login:', error);
+        if (this.promptPasswordChange(error)) return;
         this.errorMessage = loginErrorMessage(error, 'Error al iniciar sesión');
         this.isLoading = false;
       },
@@ -303,6 +307,7 @@ export class LoginPage implements OnInit {
   ): void {
     if (!this.pendingDiscoverySessionRef) return;
     this.sessionEnd.rememberOffice(office.subdomain);
+    this.selectedOfficeName = office.name;
 
     this.isLoading = true;
     this.errorMessage = '';
@@ -320,6 +325,7 @@ export class LoginPage implements OnInit {
         },
         error: (error) => {
           console.error('Error en login con oficina:', error);
+          if (this.promptPasswordChange(error)) return;
           this.errorMessage = loginErrorMessage(error, 'Error al seleccionar la oficina');
           this.isLoading = false;
         },
@@ -374,6 +380,17 @@ export class LoginPage implements OnInit {
         this.isLoading = false;
       },
     });
+  }
+
+  /** Cambio obligatorio: sin sesión; la hoja lleva al portal de la oficina. */
+  private promptPasswordChange(error: unknown): boolean {
+    if (!(error instanceof PasswordChangeRequiredError)) return false;
+    this.isLoading = false;
+    this.showCompanySelection = false;
+    this.pendingDiscoverySessionRef = null;
+    this.loginForm.get('password')?.reset();
+    void this.passwordChangePrompt.show(error, this.selectedOfficeName);
+    return true;
   }
 
   /**

@@ -30,7 +30,7 @@ import {
   ITakeoverResponse,
 } from '../models/customer-login.interface';
 import { CustomerTokenService } from './customer-token.service';
-import { interpretLoginResponse, MfaSetupRequiredError } from './customer-login-outcome';
+import { interpretLoginResponse, MfaSetupRequiredError, PasswordChangeRequiredError } from './customer-login-outcome';
 import { QuickSignInDisabledError, renewQuickSignIn } from './session-end';
 import { SessionEndService } from './session-end.service';
 import { environment } from '../../environments/environment';
@@ -138,12 +138,26 @@ export class CustomerAuthService implements OnDestroy {
     if (outcome.kind === 'mfaSetupRequired') {
       return throwError(() => new MfaSetupRequiredError());
     }
+    // Cambio obligatorio: no se guardan los tokens ni la biometría; se cierra la sesión restringida.
+    if (outcome.kind === 'passwordChangeRequired') {
+      this.discardRestrictedSession(outcome.accessToken);
+      return throwError(() => new PasswordChangeRequiredError(outcome.portalUrl));
+    }
     if (outcome.kind !== 'session') {
       return of(response);
     }
 
     this.customerTokenService.setTokens(outcome.accessToken, outcome.refreshToken);
     return this.loadCustomerProfile().pipe(map(() => response));
+  }
+
+  private discardRestrictedSession(accessToken: string | undefined): void {
+    if (!accessToken) return;
+    this.http
+      .post<void>(`${environment.apiUrl}${environment.endpoints.logout}`, {}, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      .subscribe({ error: () => undefined });
   }
 
   loadCustomerProfile(): Observable<ICustomerProfile | null> {

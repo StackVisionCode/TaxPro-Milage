@@ -5,6 +5,7 @@ import { ICustomerLoginResponse, ICustomerTenantOption } from '../models/custome
 export type LoginOutcome =
   | { kind: 'selectOffice'; reference: string; offices: ICustomerTenantOption[] }
   | { kind: 'mfaSetupRequired' }
+  | { kind: 'passwordChangeRequired'; portalUrl: string | null; accessToken?: string }
   | { kind: 'takeover'; ticket: string }
   | { kind: 'session'; accessToken: string; refreshToken: string }
   | { kind: 'invalid' };
@@ -17,6 +18,14 @@ export class MfaSetupRequiredError extends Error {
   }
 }
 
+/** La oficina pidió cambiar la contraseña: se hace en su portal web; la app no abre sesión. */
+export class PasswordChangeRequiredError extends Error {
+  constructor(readonly portalUrl: string | null) {
+    super('Password change required');
+    this.name = 'PasswordChangeRequiredError';
+  }
+}
+
 /**
  * Con MFA pendiente, Auth solo emite un token para configurarlo, que la API de la app rechaza. Por eso se
  * corta antes del takeover: no tiene sentido cerrar la otra sesión para entrar con un token inútil.
@@ -24,6 +33,9 @@ export class MfaSetupRequiredError extends Error {
 export function interpretLoginResponse(response: ICustomerLoginResponse): LoginOutcome {
   if (response.requiresTenantSelection && response.discoverySessionRef && response.offices.length > 0)
     return { kind: 'selectOffice', reference: response.discoverySessionRef, offices: response.offices };
+  // Cambio obligatorio: los tokens son restringidos y tampoco se toma la otra sesión.
+  if (response.passwordChangeRequired)
+    return { kind: 'passwordChangeRequired', portalUrl: response.portalUrl ?? null, accessToken: response.accessToken };
   if (response.mfaSetupRequired) return { kind: 'mfaSetupRequired' };
   if (response.takeoverRequired && response.takeoverTicket) return { kind: 'takeover', ticket: response.takeoverTicket };
   if (response.accessToken && response.refreshToken)

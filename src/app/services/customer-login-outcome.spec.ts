@@ -48,6 +48,33 @@ describe('interpretLoginResponse', () => {
     expect(outcome).toEqual({ kind: 'mfaSetupRequired' });
   });
 
+  // Token restringido de cambio obligatorio: no se abre sesión ni se toma la otra; el cambio va al portal.
+  it('sends the password change to the office portal instead of opening a session', () => {
+    const portalUrl = 'https://acme.taxoffix.io/portal/client/auth/login';
+
+    const outcome = interpretLoginResponse({
+      ...base,
+      passwordChangeRequired: true,
+      portalUrl,
+      accessToken: 'a',
+      refreshToken: 'r',
+    });
+
+    expect(outcome).toEqual({ kind: 'passwordChangeRequired', portalUrl, accessToken: 'a' });
+  });
+
+  it('does not take over the other session when a password change is required', () => {
+    const outcome = interpretLoginResponse({
+      ...base,
+      passwordChangeRequired: true,
+      portalUrl: null,
+      takeoverRequired: true,
+      takeoverTicket: 'ticket',
+    });
+
+    expect(outcome).toEqual({ kind: 'passwordChangeRequired', portalUrl: null, accessToken: undefined });
+  });
+
   it('asks to confirm the takeover of the other app session', () => {
     const outcome = interpretLoginResponse({ ...base, takeoverRequired: true, takeoverTicket: 'ticket' });
 

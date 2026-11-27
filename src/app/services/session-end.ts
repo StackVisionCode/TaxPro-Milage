@@ -66,10 +66,19 @@ export function platformBaseDomain(apiUrl: string = environment.apiUrl): string 
 
 /** Forgot del portal de la oficina; sin oficina, el login central de clientes. */
 export function forgotPasswordUrl(subdomain: string | null | undefined, apiUrl: string = environment.apiUrl): string {
+  return officePortalUrl(subdomain, 'forgot-password', apiUrl);
+}
+
+/** Login del portal de la oficina; sin oficina, el login central de clientes. */
+export function portalLoginUrl(subdomain: string | null | undefined, apiUrl: string = environment.apiUrl): string {
+  return officePortalUrl(subdomain, 'login', apiUrl);
+}
+
+function officePortalUrl(subdomain: string | null | undefined, page: string, apiUrl: string): string {
   const baseDomain = platformBaseDomain(apiUrl);
   const office = subdomain?.trim().toLowerCase();
   if (!office || !/^[a-z0-9-]+$/.test(office)) return `https://app.${baseDomain}/client`;
-  return `https://${office}.${baseDomain}/portal/client/auth/forgot-password`;
+  return `https://${office}.${baseDomain}/portal/client/auth/${page}`;
 }
 
 function readReason(body: unknown): string {
